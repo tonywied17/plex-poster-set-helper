@@ -405,6 +405,33 @@ The tool will find and update the same media across all specified libraries.
 
 ---
 
+## Architecture
+
+Want to understand how the application works under the hood? Check out the comprehensive architecture documentation and diagrams:
+
+### Component Diagram
+![Component Architecture](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/.github/diagrams/component_diagram.png)
+
+The component diagram illustrates the layered architecture and how different modules interact with each other.
+
+### User Journey Diagram
+![User Journey Flow](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/.github/diagrams/user_journey_diagram.png)
+
+The user journey diagram shows the complete data flow from user input through scraping, processing, and uploading to your Plex server.
+
+### Full Architecture Documentation
+
+For an in-depth technical guide including:
+- Complete layer-by-layer breakdown
+- Data flow diagrams
+- Design patterns used
+- Technology stack details
+- Performance characteristics
+
+See the full [Architecture Documentation](ARCHITECTURE.md).
+
+---
+
 ## Building the Executable
 
 A pre-built Windows executable is available in the `dist/` folder. To build it yourself:
