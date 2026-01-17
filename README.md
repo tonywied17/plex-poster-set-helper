@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](https://github.com/bbrown430/plex-poster-set-helper)
-[![GitHub Stars](https://img.shields.io/github/stars/bbrown430/plex-poster-set-helper?style=social)](https://github.com/bbrown430/plex-poster-set-helper/stargazers)
 [![GitHub Issues](https://img.shields.io/github/issues/bbrown430/plex-poster-set-helper)](https://github.com/bbrown430/plex-poster-set-helper/issues)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/bbrown430/plex-poster-set-helper)](https://github.com/bbrown430/plex-poster-set-helper/commits/main)
+[![GitHub Stars](https://img.shields.io/github/stars/bbrown430/plex-poster-set-helper?style=social)](https://github.com/bbrown430/plex-poster-set-helper/stargazers)
 
 Automatically download and apply poster sets from ThePosterDB and MediUX to your Plex Media Server in seconds. This tool streamlines the process of updating your Plex library with high-quality custom posters, supporting both movies and TV shows with season and episode artwork.
 
