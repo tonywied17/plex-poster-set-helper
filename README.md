@@ -34,7 +34,6 @@ Automatically download and apply poster sets from ThePosterDB and MediUX to your
   - [MediUX Filters](#mediux-filters)
   - [Title Matching](#title-matching)
   - [Multiple Libraries](#multiple-libraries)
-- [Architecture](#architecture)
 - [Building the Executable](#building-the-executable)
 - [Troubleshooting](#troubleshooting)
   - [Posters Not Applying to Plex](#posters-not-applying-to-plex)
@@ -447,28 +446,6 @@ Apply posters to multiple Plex libraries simultaneously:
 ```
 
 The tool will find and update the same media across all specified libraries.
-
----
-
-## Architecture
-
-Want to understand how the application works under the hood? Check out the comprehensive architecture documentation and diagrams:
-
-### Component Diagram
-![Component Architecture](https://raw.githubusercontent.com/tonywied17/plex-poster-set-helper/refs/heads/main/.github/diagrams/component_diagram.png)
-
-The component diagram illustrates the layered architecture and how different modules interact with each other.
-
-### Full Architecture Documentation
-
-For an in-depth technical guide including:
-- Complete layer-by-layer breakdown
-- Data flow diagrams
-- Design patterns used
-- Technology stack details
-- Performance characteristics
-
-See the full [Architecture Documentation](ARCHITECTURE.md).
 
 ---
 
