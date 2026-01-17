@@ -3,11 +3,17 @@
 > **A comprehensive visual guide to the application's layered architecture**
 
 ## Table of Contents
-- [System Overview](#-system-overview)
-- [Architecture Layers](#-architecture-layers)
-- [Data Flow](#-data-flow)
-- [Component Interaction](#-component-interaction)
-- [Technology Stack](#-technology-stack)
+- [System Overview](#system-overview)
+- [Architecture Layers](#architecture-layers)
+- [Data Flow](#data-flow)
+- [Component Interaction](#component-interaction)
+- [Technology Stack](#technology-stack)
+- [Design Patterns Summary](#design-patterns-summary)
+- [Configuration Flow](#configuration-flow)
+- [Execution Modes](#execution-modes)
+- [Performance Characteristics](#performance-characteristics)
+- [Error Handling Strategy](#error-handling-strategy)
+- [File Structure Mapping](#file-structure-mapping)
 
 ---
 
