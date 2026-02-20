@@ -15,12 +15,13 @@ INTERACTIVE_CLI = True  # Set to False when building executable for GUI default
 def check_playwright_browsers():
     """Check if Playwright browsers are installed."""
     try:
-        # Try to check if chromium is installed
-        result = subprocess.run(
+        # Try to check if chromium is installed; raise on non-zero exit
+        subprocess.run(
             [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
+            check=True,
         )
         return True
     except Exception:

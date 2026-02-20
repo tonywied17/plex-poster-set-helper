@@ -1,25 +1,15 @@
 """Main GUI application for Plex Poster Set Helper - Refactored Architecture."""
 
-import os
-import sys
 import threading
 import webbrowser
-import logging
-import tkinter as tk
-from tkinter import ttk
-import time
 import customtkinter as ctk
-import re
-from PIL import Image
-from typing import List
 
 from ...core.config import ConfigManager, Config
 from ...core.logger import get_logger
 from ...services.plex_service import PlexService
 from ...services.poster_upload_service import PosterUploadService
 from ...scrapers.scraper_factory import ScraperFactory
-from ...utils.helpers import resource_path, get_exe_dir
-from ...utils.text_utils import parse_urls
+from ...utils.helpers import resource_path
 
 from .widgets import UIHelpers
 from .widgets.log_viewer import LogViewer
@@ -35,52 +25,67 @@ from .tabs import (
 
 class PlexPosterGUI:
     """Main GUI application with modular architecture."""
-    
     def __init__(self):
         """Initialize the GUI application."""
         self.config_manager = ConfigManager()
         self.config = self.config_manager.load()
-        
+
         # Initialize logger
         self.logger = get_logger()
-        # Pass append/write preference from config when configuring logger
         try:
             append_mode = bool(getattr(self.config, 'log_append', False))
         except Exception:
             append_mode = False
-        self.logger.configure(log_file=self.config.log_file, append=append_mode)
+        try:
+            self.logger.configure(log_file=self.config.log_file, append=append_mode)
+        except Exception:
+            try:
+                self.logger.configure(log_file=getattr(self.config, 'log_file', 'debug.log'))
+            except Exception:
+                pass
         self.logger.info("GUI Application initializing...")
-        
+
+        # Create LogViewer instance and attach its handler to the app logger
+        try:
+            self.log_viewer = LogViewer(self)
+            # attach to underlying logging.Logger
+            try:
+                self.log_viewer.attach_to_logger(getattr(self.logger, 'logger', None))
+            except Exception:
+                pass
+        except Exception:
+            self.log_viewer = None
+
         # Services
         self.plex_service: PlexService = None
         self.upload_service: PosterUploadService = None
         self.scraper_factory: ScraperFactory = None
-        
+
         # Main window
         self.app = None
-        
+
         # Status and progress
         self.status_label = None
         self.progress_bar = None
         self.progress_label = None
         self.cancel_button = None
         self.is_cancelled = False
-        
+
         # Bulk import state
         self.current_bulk_file = None
-        
+
         # Helpers and handlers (initialized after UI creation)
         self.ui_helpers = None
         self.scrape_handler = None
         self.label_handler = None
-        
+
         # Tab instances
         self.poster_scrape_tab = None
         self.bulk_import_tab = None
         self.title_mappings_tab = None
         self.manage_labels_tab = None
         self.settings_tab = None
-        
+
         # Expose settings tab variables for backwards compatibility
         self.base_url_entry = None
         self.token_entry = None
@@ -91,7 +96,7 @@ class PlexPosterGUI:
         self.batch_delay_var = None
         self.page_wait_min_var = None
         self.page_wait_max_var = None
-        
+
         # Expose manage labels variables for backwards compatibility
         self.labeled_items_scroll = None
         self.labeled_count_label = None
@@ -102,48 +107,46 @@ class PlexPosterGUI:
         self.labeled_filter_posterdb = None
         self.labeled_filter_movies = None
         self.labeled_filter_tv = None
-        # Log window and handler
-        self.log_window = None
-        self._gui_log_handler = None
-        self.log_text_widget = None
-        self._log_full_messages = {}
-    
+
+        # Log viewer (delegates all log UI/stream handling to LogViewer)
+        self.log_viewer = None
+
     def run(self):
         """Run the GUI application."""
         self._create_ui()
         self.app.mainloop()
-    
+
     def _create_ui(self):
         """Create the main UI window."""
         self.app = ctk.CTk()
         ctk.set_appearance_mode("dark")
-        
+
         self.app.title("Plex Poster Upload Helper")
         self.app.geometry("660x815")
-        
+
         try:
             self.app.iconbitmap(resource_path("icons/Plex.ico"))
-        except:
+        except Exception:
             pass
-        
+
         self.app.configure(fg_color="#2A2B2B")
         self.app.protocol("WM_DELETE_WINDOW", self._on_closing)
-        
+
         # Initialize helpers
         self.ui_helpers = UIHelpers(self.app)
-        
+
         # Initialize handlers (before tabs, since tabs use them)
         self.scrape_handler = ScrapeHandler(self)
         self.label_handler = LabelHandler(self)
-        
+
         # Create UI components
         self._create_link_bar()
         self._create_tabview()
         self._create_status_bar()
-        
+
         # Load configuration into UI
         self._load_and_update_ui()
-    
+
     def _create_link_bar(self):
         """Create the link bar at the top."""
         link_bar = ctk.CTkFrame(self.app, fg_color="transparent")
@@ -187,345 +190,26 @@ class PlexPosterGUI:
         )
         posterdb_button.pack(side="right", padx=5)
 
-        # Logs button to open debug/status window
+        # Logs button to open debug/status window (directly use LogViewer)
+        def _open_logs():
+            try:
+                if not getattr(self, 'log_viewer', None):
+                    self.log_viewer = LogViewer(self)
+                self.log_viewer.open()
+            except Exception:
+                pass
+
         logs_button = self.ui_helpers.create_button(
             link_bar,
             text="Log Viewer",
-            command=self._open_log_window,
+            command=_open_logs,
             color="#444444",
             height=30
         )
         logs_button.pack(side="right", padx=5)
 
-    def _create_gui_log_handler(self, append_callback):
-        """Create a logging.Handler that appends formatted records via append_callback."""
-        class GuiLogHandler(logging.Handler):
-            def __init__(self, cb):
-                super().__init__()
-                self.cb = cb
-
-            def emit(self, record):
-                try:
-                    from datetime import datetime as _dt
-                    created = _dt.fromtimestamp(record.created).strftime('%Y-%m-%d %H:%M:%S')
-                    level = record.levelname
-                    logger_name = record.name
-                    message = record.getMessage()
-                    self.cb((created, level, logger_name, message))
-                except Exception:
-                    pass
-
-        handler = GuiLogHandler(append_callback)
-        handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s | %(levelname)-7s | %(name)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-        handler.setFormatter(formatter)
-        return handler
-
-    def _open_log_window(self):
-        """Open or focus a debug/status window and stream logs into it."""
-        # Delegate whole log window to LogViewer for separation of concerns
-        try:
-            if not getattr(self, 'log_viewer', None):
-                self.log_viewer = LogViewer(self)
-            self.log_viewer.open()
-        except Exception:
-            pass
-
-    def _append_log_text(self, text: str):
-        """Append text to the log Text widget and scroll to end."""
-        try:
-            # If we have a dedicated LogViewer, delegate to it
-            if getattr(self, 'log_viewer', None):
-                try:
-                    self.log_viewer.append(text)
-                    return
-                except Exception:
-                    pass
-            if not self.log_text_widget:
-                return
-            tree: ttk.Treeview = self.log_text_widget
-            time, level, logger_name, message = ('', '', '', '')
-            if isinstance(text, tuple) or isinstance(text, list):
-                time, level, logger_name, message = text
-            else:
-                message = str(text)
-
-            original_message = message
-
-            time, level, logger_name, message = self._normalize_log_parts(time, level, logger_name, message)
-
-            try:
-                message = str(message).replace('\r', ' ').replace('\n', ' ⤶ ')
-                message = re.sub(r'\s+', ' ', message)
-            except Exception:
-                pass
-            
-            tag = level.upper() if level else 'INFO'
-            if message and ('NEW SESSION STARTED' in message.upper() or message.strip().startswith('===')):
-                tag = 'SESSION'
-
-            lower_msg = (message or '').lower()
-            if any(k in lower_msg for k in ("signed in with plex", "token populated", "received auth token", "saving configuration", "configuration saved")):
-                tag = 'SUCCESS'
-
-            iid = tree.insert('', tk.END, values=(time, level, logger_name, message), tags=(tag,))
-            try:
-                self._log_full_messages[iid] = original_message
-            except Exception:
-                pass
-            children = tree.get_children()
-            if children:
-                tree.see(children[-1])
-
-            max_rows = 20000
-            cur = len(children)
-            if cur > max_rows:
-                for iid in children[:cur - max_rows]:
-                    try:
-                        tree.delete(iid)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    def _toggle_handler_level(self):
-        pass
-
-    def _save_log_to_file(self, text_widget):
-        """Save contents of the log text widget to a file chosen by the user."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    self.log_viewer.save_to_file()
-                    return
-                except Exception:
-                    pass
-            import tkinter.filedialog as fd
-            path = fd.asksaveasfilename(defaultextension='.log', filetypes=[('Log files', '*.log'), ('All files', '*.*')])
-            if not path:
-                return
-            if isinstance(text_widget, ttk.Treeview):
-                lines = []
-                for iid in text_widget.get_children():
-                    vals = text_widget.item(iid, 'values')
-                    full_msg = self._log_full_messages.get(iid, None)
-                    cols = []
-                    if vals and len(vals) >= 3:
-                        cols = [str(vals[0]), str(vals[1]), str(vals[2])]
-                    else:
-                        cols = [str(v) for v in (vals or [])]
-                    cols.append(full_msg if full_msg is not None else (vals[3] if vals and len(vals) > 3 else ''))
-                    lines.append(' | '.join(cols))
-                with open(path, 'w', encoding='utf-8') as f:
-                    f.write('\n'.join(lines))
-            else:
-                contents = text_widget.get('1.0', tk.END)
-                with open(path, 'w', encoding='utf-8') as f:
-                    f.write(contents)
-            self._update_status(f"Saved log to {path}", color="#E5A00D")
-        except Exception as e:
-            self._update_status(f"Error saving log: {e}", color="red")
-
-    def _append_log_row(self, data):
-        """Compatibility wrapper for appending a log row into the Treeview."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    self.log_viewer.append(data)
-                    return
-                except Exception:
-                    pass
-            self._append_log_text(data)
-        except Exception:
-            pass
-
-    def _clear_log_table(self):
-        """Clear the Treeview log table and associated full-message mapping."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    self.log_viewer.clear()
-                    return
-                except Exception:
-                    pass
-            if isinstance(self.log_text_widget, ttk.Treeview):
-                try:
-                    self.log_text_widget.delete(*self.log_text_widget.get_children())
-                except Exception:
-                    pass
-                try:
-                    self._log_full_messages.clear()
-                except Exception:
-                    pass
-            else:
-                if self.log_text_widget:
-                    try:
-                        self.log_text_widget.configure(state=tk.NORMAL)
-                        self.log_text_widget.delete('1.0', tk.END)
-                        self.log_text_widget.configure(state=tk.DISABLED)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    def _normalize_log_parts(self, time_val, level, logger_name, message):
-        """Clean and normalize parsed log parts for display.
-
-        Removes repeated 'info:123|' style prefixes from messages, trims
-        excess separators, and ensures level and logger are set.
-        """
-        try:
-            level = (level or '').strip()
-            logger_name = (logger_name or '').strip()
-            message = (message or '').strip()
-            message = re.sub(r'^(?:\s*(?:INFO|DEBUG|ERROR|WARNING|CRITICAL)\s*:\s*)+', '', message, flags=re.IGNORECASE)
-            message = re.sub(r'^\s*(?:debug|info|warning|error|critical)\s*:?\s*\d*\s*\|\s*', '', message, flags=re.IGNORECASE)
-            message = re.sub(r'^\s*\w+?:\d+\|\s*', '', message)
-
-            def _collapse_prefixes(s: str) -> str:
-                try:
-                    pattern = re.compile(r'((?:INFO|DEBUG|ERROR|WARNING|CRITICAL)\s*:\s*){2,}', re.IGNORECASE)
-                    while True:
-                        m = pattern.search(s)
-                        if not m:
-                            break
-                        first = re.match(r'^(INFO|DEBUG|ERROR|WARNING|CRITICAL)', m.group(0), re.IGNORECASE)
-                        rep = (first.group(1).upper() + ': ') if first else ''
-                        s = s[:m.start()] + rep + s[m.end():]
-                    return s
-                except Exception:
-                    return s
-
-            message = _collapse_prefixes(message)
-
-            # Normalize level to uppercase common values
-            if not level and message:
-                m = re.match(r'^(DEBUG|INFO|ERROR|WARNING|CRITICAL)[:\s]', message, flags=re.IGNORECASE)
-                if m:
-                    level = m.group(1)
-                    message = re.sub(r'^(DEBUG|INFO|ERROR|WARNING|CRITICAL)[:\s]+', '', message, flags=re.IGNORECASE)
-
-            level = (level or 'INFO').upper()
-
-            # Special-case session banners
-            if 'NEW SESSION STARTED' in message.upper() or re.match(r'^[=\-\s]{5,}$', message):
-                message = message.strip()
-                logger_name = logger_name or 'Session'
-                level = 'INFO'
-
-            lower_msg = message.lower()
-            if any(k in lower_msg for k in ("signed in with plex", "token populated", "received auth token", "configuration saved")):
-                level = 'INFO'
-
-            return time_val, level, logger_name, message
-        except Exception:
-            return time_val, level or 'INFO', logger_name or '', message
-
-    def _on_log_row_double_click(self, event):
-        """Open a dialog showing the full message for the selected row."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    return self.log_viewer._on_double_click(event)
-                except Exception:
-                    pass
-            widget = event.widget
-            selection = widget.selection()
-            if not selection:
-                return
-            iid = selection[0]
-            vals = widget.item(iid, 'values')
-            if not vals or len(vals) < 4:
-                return
-            time_val, level = vals[0], vals[1]
-            message_cell = vals[2]
-            location_cell = vals[3] if len(vals) > 3 else ''
-            full = self._log_full_messages.get(iid, message_cell)
-            self._show_full_log_message(time_val, level, location_cell, full)
-        except Exception:
-            pass
-
-    def _show_full_log_message(self, time_val, level, logger_name, message):
-        """Show the full log message in a modal dialog with copy option."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    return self.log_viewer._show_modal(message)
-                except Exception:
-                    pass
-            dlg = ctk.CTkToplevel(self.app)
-            dlg.title(f"Log Detail - {level}")
-            dlg.geometry("800x400")
-            dlg.configure(fg_color="#2A2B2B")
-
-            frame = tk.Frame(dlg, bg="#2A2B2B")
-            frame.pack(fill="both", expand=True, padx=8, pady=8)
-
-            header = ctk.CTkLabel(frame, text=f"{time_val} | {level} | {logger_name}", text_color="#E5A00D")
-            header.pack(fill="x", pady=(0,6))
-
-            text = tk.Text(frame, wrap=tk.WORD, bg="#1C1E1E", fg="#CECECE", insertbackground="#E5A00D")
-            text.insert('1.0', message)
-            text.configure(state=tk.DISABLED)
-            text.pack(fill="both", expand=True)
-
-            btn_frame = tk.Frame(dlg, bg="#2A2B2B")
-            btn_frame.pack(fill="x", pady=(6,0), padx=8)
-
-            def copy_msg():
-                try:
-                    self.app.clipboard_clear()
-                    self.app.clipboard_append(message)
-                    self._update_status("Copied log message to clipboard", color="#E5A00D")
-                except Exception:
-                    pass
-
-            copy_btn = self.ui_helpers.create_button(btn_frame, text="Copy", command=copy_msg)
-            copy_btn.pack(side="left")
-
-            close_btn = self.ui_helpers.create_button(btn_frame, text="Close", command=dlg.destroy)
-            close_btn.pack(side="right")
-        except Exception:
-            pass
-
-    def _close_log_window(self):
-        """Close the log window and detach handler."""
-        try:
-            if getattr(self, 'log_viewer', None):
-                try:
-                    self.log_viewer.close()
-                except Exception:
-                    pass
-                self.log_viewer = None
-                return
-            if self._gui_log_handler:
-                try:
-                    self.logger.logger.removeHandler(self._gui_log_handler)
-                except Exception:
-                    pass
-                self._gui_log_handler = None
-            if self.log_window:
-                try:
-                    self.log_window.destroy()
-                except Exception:
-                    pass
-        finally:
-            try:
-                if hasattr(self, '_orig_stdout') and self._orig_stdout:
-                    sys.stdout = self._orig_stdout
-                    self._orig_stdout = None
-                if hasattr(self, '_orig_stderr') and self._orig_stderr:
-                    sys.stderr = self._orig_stderr
-                    self._orig_stderr = None
-            except Exception:
-                pass
-
-            self.log_window = None
-            self.log_text_widget = None
-            try:
-                self._log_full_messages.clear()
-            except Exception:
-                self._log_full_messages = {}
+    # All logging UI and stream redirection is implemented in `LogViewer`.
+    # Use `LogViewer` directly (see `src/ui/gui/widgets/log_viewer.py`).
     
     def _create_tabview(self):
         """Create the tabbed interface."""

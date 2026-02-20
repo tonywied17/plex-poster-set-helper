@@ -312,6 +312,57 @@ class LogViewer:
         handler.setFormatter(fmt)
         return handler
 
+    # --- Public helper API -----------------------------------------
+    def create_handler(self):
+        """Return a GUI logging.Handler that appends records into this viewer.
+
+        This is a public wrapper for `_create_gui_log_handler` so other
+        modules can attach the handler without touching private methods.
+        """
+        try:
+            return self._create_gui_log_handler(self._append_cb)
+        except Exception:
+            return None
+
+    def attach_to_logger(self, logger_obj=None):
+        """Attach the viewer's handler to the given logger (or the app logger).
+
+        Returns the handler instance or None on failure.
+        """
+        try:
+            target = logger_obj or getattr(self, 'logger_obj', None) or logging.getLogger()
+            if not self._handler:
+                handler = self.create_handler()
+                if handler is None:
+                    return None
+                try:
+                    target.addHandler(handler)
+                    self._handler = handler
+                except Exception:
+                    return None
+            else:
+                try:
+                    if self._handler not in getattr(target, 'handlers', []):
+                        target.addHandler(self._handler)
+                except Exception:
+                    pass
+            return self._handler
+        except Exception:
+            return None
+
+    def detach_from_logger(self, logger_obj=None):
+        """Detach the viewer's handler from the given logger (or the app logger)."""
+        try:
+            target = logger_obj or getattr(self, 'logger_obj', None) or logging.getLogger()
+            if self._handler:
+                try:
+                    target.removeHandler(self._handler)
+                except Exception:
+                    pass
+                self._handler = None
+        except Exception:
+            pass
+
     def _append_cb(self, data):
         try:
             self.root.after(0, lambda: self.append(data))
