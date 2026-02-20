@@ -313,7 +313,7 @@ The GUI provides an intuitive interface with multiple tabs:
 - Adjust concurrent worker settings (1 to CPU core count)
  - Sign in with Plex via browser PIN (TV-code) — open the browser, follow the link, or enter the code shown; the app will poll for authorization and automatically populate and save the Plex token to `config.json`.
 
-**Plex Sign-in (Browser PIN / TV-code)**
+### Plex Sign-in (Browser PIN / TV-code)
 
 If you prefer an easy OAuth-style sign-in instead of manually finding or pasting your Plex token, use the built-in browser PIN flow:
 
@@ -327,7 +327,8 @@ Notes:
 - The token is stored in your `config.json` under the `token` key. Keep this file secure.
 - The PIN flow requires internet access and may open your default browser. If the browser does not open automatically, copy the link shown in the dialog into your browser.
 
-**Log Viewer (Debug Window):**
+### Log Viewer (Debug Window)
+
 - Access a built-in Log Viewer from the GUI to see verbose runtime logs in a Treeview.
 - Features: time/level/message/location columns, duplicate-collapse (counts), color-coded tags (ERROR/WARNING/INFO/DEBUG/SESSION/SUCCESS/SCRAPE), auto-scroll to newest, double-click to view full message, and Save/Export which writes the full on-disk `debug.log`.
 - Control log file behavior via the `log_append` setting in `config.json` (append vs overwrite).
