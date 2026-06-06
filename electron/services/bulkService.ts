@@ -3,7 +3,7 @@ import * as path from 'path'
 import { app } from 'electron'
 import { Logger } from './logger'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function bulkDir(): string {
   const dir = path.join(app.getPath('userData'), 'bulk-files')
@@ -12,12 +12,12 @@ function bulkDir(): string {
 }
 
 function filePath(filename: string): string {
-  // Sanitise — strip any path separators, ensure .txt extension
+  // Sanitise - strip any path separators, ensure .txt extension
   const safe = path.basename(filename).replace(/[/\\]/g, '')
   return path.join(bulkDir(), safe.endsWith('.txt') ? safe : `${safe}.txt`)
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
+// --- Service ------------------------------------------------------------------
 
 export const BulkService = {
   list(): string[] {

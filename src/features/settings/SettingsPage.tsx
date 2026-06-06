@@ -1,20 +1,19 @@
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LogIn, LogOut, RefreshCw, Save, ServerCrash,
+  LogIn, LogOut, RefreshCw, ServerCrash, Pencil, X,
   Server, User, Sliders, SlidersHorizontal, Filter, Wrench,
-  CheckCircle2, Circle,
+  CheckCircle2, Circle, Globe, Download, RotateCcw, AlertTriangle, Film, Copy, ExternalLink,
 } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import Switch from '../../components/ui/Switch'
 import Slider from '../../components/ui/Slider'
-import RangeSlider from '../../components/ui/RangeSlider'
 import Checkbox from '../../components/ui/Checkbox'
-import type { AppConfig, Library, PlexAuthStatus } from '../../../electron/ipc/types'
+import type { AppConfig, Library, PlexAuthStatus, BrowserStatus } from '../../../electron/ipc/types'
 import styles from './SettingsPage.module.css'
 
-// ─── Section wrapper ──────────────────────────────────────────────────────────
+// --- Section wrapper ----------------------------------------------------------
 
 function Section({
   icon,
@@ -44,7 +43,7 @@ function Section({
   )
 }
 
-// ─── Field row ────────────────────────────────────────────────────────────────
+// --- Field row ----------------------------------------------------------------
 
 function FieldRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -58,7 +57,7 @@ function FieldRow({ label, hint, children }: { label: string; hint?: string; chi
   )
 }
 
-// ─── Setup flow stepper ───────────────────────────────────────────────────────
+// --- Setup flow stepper -------------------------------------------------------
 
 type StepState = 'done' | 'active' | 'waiting'
 
@@ -110,42 +109,47 @@ function SetupFlow({ step1, step2, step3 }: { step1: StepState; step2: StepState
   )
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [cfg, setCfg]           = useState<AppConfig | null>(null)
-  const [draft, setDraft]       = useState<Partial<AppConfig>>({})
-  const [saving, setSaving]     = useState(false)
+  const [cfg, setCfg] = useState<AppConfig | null>(null)
 
   // auth
   const [authStatus, setAuthStatus] = useState<PlexAuthStatus>({ status: 'idle' })
   const [signingIn, setSigningIn]   = useState(false)
+  const [copiedAuth, setCopiedAuth] = useState(false)
 
   // server
-  const [testing, setTesting]         = useState(false)
-  const [testMsg, setTestMsg]         = useState<{ ok: boolean; msg: string } | null>(null)
+  const [testing, setTesting]               = useState(false)
+  const [testMsg, setTestMsg]               = useState<{ ok: boolean; msg: string } | null>(null)
   const [serverConnected, setServerConnected] = useState(false)
+  const [serverName, setServerName]         = useState('')
+  const [editingServer, setEditingServer]   = useState(false)
 
   // libraries
   const [libraries, setLibraries]       = useState<Library[]>([])
   const [refreshingLibs, setRefreshLibs] = useState(false)
 
-  const isDirty = Object.keys(draft).length > 0
+  // browser
+  const [browserStatus,    setBrowserStatus]    = useState<BrowserStatus | null>(null)
+  const [browserInstalling, setBrowserInstalling] = useState(false)
+  const [installLog,       setInstallLog]       = useState<string[]>([])
+  const installLogRef = useRef<HTMLDivElement>(null)
 
-  // ── Merge helper ───────────────────────────────────────────────────────────
+  // cfg is the single source of truth - no draft layer
+  const merged = cfg
 
-  const merged = cfg ? { ...cfg, ...draft } : null
-
-  function patch<K extends keyof AppConfig>(key: K, value: AppConfig[K]) {
-    setDraft(d => ({ ...d, [key]: value }))
+  function autosave<K extends keyof AppConfig>(key: K, value: AppConfig[K]) {
+    setCfg(prev => prev ? { ...prev, [key]: value } : prev)
+    void window.api.config.set({ [key]: value })
   }
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // -- Load -------------------------------------------------------------------
 
   const loadConfig = useCallback(async () => {
     const c = await window.api.config.get() as AppConfig
     setCfg(c)
-    setDraft({})
+    if (c.plexServerName) setServerName(c.plexServerName)
   }, [])
 
   const loadLibraries = useCallback(async () => {
@@ -159,31 +163,51 @@ export default function SettingsPage() {
     }
   }, [])
 
+  const loadBrowserStatus = useCallback(async () => {
+    const s = await window.api.browser.getStatus() as BrowserStatus
+    setBrowserStatus(s)
+  }, [])
+
   useEffect(() => {
     loadConfig()
-    window.api.auth.getStatus().then(s => setAuthStatus(s as PlexAuthStatus))
+    loadBrowserStatus()
+
+    // Restore state on every mount (handles navigating away and back)
+    window.api.auth.getStatus().then(s => {
+      const status = s as PlexAuthStatus
+      setAuthStatus(status)
+      if (status.status === 'authorized') {
+        if (status.serverName) {
+          setServerConnected(true)
+          setServerName(status.serverName)
+        }
+        loadLibraries()
+      }
+    })
 
     const off = window.api.auth.onStatusChange((s: PlexAuthStatus) => {
       setAuthStatus(s)
       if (s.status === 'authorized') {
         setSigningIn(false)
         loadConfig()
-        loadLibraries()
+        if (s.serverName) {
+          setServerConnected(true)
+          setServerName(s.serverName)
+          loadLibraries()
+        }
       }
       if (s.status === 'idle') {
         setLibraries([])
         setServerConnected(false)
+        setServerName('')
+        setEditingServer(false)
         setTestMsg(null)
       }
     })
     return () => { off() }
-  }, [loadConfig, loadLibraries])
+  }, [loadConfig, loadLibraries, loadBrowserStatus])
 
-  useEffect(() => {
-    if (authStatus.status === 'authorized') loadLibraries()
-  }, [authStatus.status, loadLibraries])
-
-  // ── Auth ───────────────────────────────────────────────────────────────────
+  // -- Auth -------------------------------------------------------------------
 
   async function signIn() {
     setSigningIn(true)
@@ -198,13 +222,17 @@ export default function SettingsPage() {
 
   async function disconnect() {
     await window.api.auth.disconnect()
+    await window.api.config.set({ movieLibraries: [], tvLibraries: [], plexServerName: '' })
+    setCfg(prev => prev ? { ...prev, movieLibraries: [], tvLibraries: [], plexServerName: '' } : prev)
     setAuthStatus({ status: 'idle' })
     setLibraries([])
     setServerConnected(false)
+    setServerName('')
+    setEditingServer(false)
     setTestMsg(null)
   }
 
-  // ── Test connection ────────────────────────────────────────────────────────
+  // -- Test connection --------------------------------------------------------
 
   async function testConnection() {
     if (!merged) return
@@ -213,12 +241,14 @@ export default function SettingsPage() {
     try {
       const res = await window.api.plex.connect(merged.baseUrl, merged.token) as { success: boolean; serverName?: string; error?: string }
       if (res.success) {
-        setTestMsg({ ok: true, msg: `Connected to "${res.serverName}"` })
+        const name = res.serverName ?? ''
+        setTestMsg({ ok: true, msg: `Connected to "${name}"` })
         setServerConnected(true)
+        setServerName(name)
+        setEditingServer(false)
+        await window.api.config.set({ baseUrl: merged.baseUrl, plexServerName: name })
+        setCfg(prev => prev ? { ...prev, baseUrl: merged.baseUrl, plexServerName: name } : prev)
         await loadLibraries()
-        // persist baseUrl + token from the merged draft
-        await window.api.config.set({ baseUrl: merged.baseUrl })
-        setDraft(d => { const n = { ...d }; delete n.baseUrl; return n })
       } else {
         setTestMsg({ ok: false, msg: res.error ?? 'Connection failed' })
       }
@@ -228,17 +258,7 @@ export default function SettingsPage() {
     setTesting(false)
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────
-
-  async function save() {
-    if (!isDirty) return
-    setSaving(true)
-    await window.api.config.set(draft)
-    await loadConfig()
-    setSaving(false)
-  }
-
-  // ── Library toggle ─────────────────────────────────────────────────────────
+  // -- Library toggle ---------------------------------------------------------
 
   function toggleLibrary(key: string, type: 'movie' | 'show') {
     if (!merged) return
@@ -247,10 +267,32 @@ export default function SettingsPage() {
     const next = current.includes(key)
       ? current.filter(k => k !== key)
       : [...current, key]
-    patch(field, next)
+    autosave(field as keyof AppConfig, next as AppConfig[keyof AppConfig])
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // -- Browser install --------------------------------------------------------
+
+  async function installBrowser() {
+    setBrowserInstalling(true)
+    setInstallLog([])
+    const off = window.api.browser.onInstallProgress((line: string) => {
+      setInstallLog(prev => [...prev, line])
+      setTimeout(() => {
+        installLogRef.current?.scrollTo({ top: installLogRef.current.scrollHeight, behavior: 'smooth' })
+      }, 30)
+    })
+    try {
+      await window.api.browser.install()
+      await loadBrowserStatus()
+    } catch {
+      setInstallLog(prev => [...prev, '✗ Installation failed. Ensure Node.js is on your PATH.'])
+    } finally {
+      off()
+      setBrowserInstalling(false)
+    }
+  }
+
+  // --- Render ----------------------------------------------------------------
 
   if (!merged) return (
     <div className={styles.loading}><Spinner size="md" /></div>
@@ -270,27 +312,27 @@ export default function SettingsPage() {
   return (
     <div className={styles.page}>
 
-      {/* ── Page header ────────────────────────────────────────────────────── */}
+      {/* -- Page header ------------------------------------------------------ */}
       <div className={styles.pageHeader}>
-        <div>
-          <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">Configure your Plex connection, scraper behaviour, and library preferences.</p>
-        </div>
-        <Button
-          variant="primary"
-          size="sm"
-          icon={saving ? <Spinner size="xs" color="current" /> : <Save size={13} />}
-          onClick={save}
-          disabled={!isDirty || saving}
-        >
-          Save Changes
-        </Button>
+        <h1 className="page-title">Settings</h1>
+        <p className="page-subtitle">Changes are saved automatically.</p>
       </div>
 
-      {/* ── Scrollable body ────────────────────────────────────────────────── */}
+      {/* -- Scrollable body -------------------------------------------------- */}
       <div className={styles.body}>
 
-        {/* ── Setup flow stepper ─────────────────────────────────────────── */}
+        {/* -- Group: Plex Connection --------------------------------------- */}
+        <div className={styles.groupDivider}>
+          <div className={styles.groupDividerLine} />
+          <span className={styles.groupDividerLabel}>
+            <span className={styles.groupDividerDot} />
+            Plex Connection
+            <span className={styles.groupDividerDot} />
+          </span>
+          <div className={styles.groupDividerLine} />
+        </div>
+
+        {/* -- Setup flow stepper ------------------------------------------- */}
         <AnimatePresence initial={false}>
           {!setupDone && (
             <motion.div
@@ -305,7 +347,7 @@ export default function SettingsPage() {
           )}
         </AnimatePresence>
 
-        {/* ── Plex account ───────────────────────────────────────────────── */}
+        {/* -- Plex account ------------------------------------------------- */}
         <Section icon={<User size={15} />} title="Plex Account" description="Authenticate with your plex.tv account to enable automatic library matching.">
           {connected ? (
             <div className={styles.accountCard}>
@@ -336,17 +378,45 @@ export default function SettingsPage() {
           ) : (
             <div className={styles.signInRow}>
               {signingIn ? (
+                authStatus.status === 'waiting' && authStatus.authUrl ? (
+                  <div className={styles.authLinkBox}>
+                    <div className={styles.authLinkHeader}>
+                      <Spinner size="xs" />
+                      <span>Waiting for you to authorize…</span>
+                    </div>
+                    <p className={styles.authLinkHint}>
+                      Open this link on any device, sign in, and approve. This window finishes automatically.
+                    </p>
+                    <div className={styles.authLinkRow}>
+                      <code className={styles.authLinkUrl} title={authStatus.authUrl}>{authStatus.authUrl}</code>
+                      <button
+                        className={styles.authCopyBtn}
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(authStatus.authUrl!); setCopiedAuth(true); setTimeout(() => setCopiedAuth(false), 1800) } catch { /* clipboard may be blocked */ }
+                        }}
+                        title="Copy link"
+                      >
+                        {copiedAuth ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                      </button>
+                      <button
+                        className={styles.authOpenBtn}
+                        onClick={() => window.open(authStatus.authUrl!, '_blank')}
+                        title="Try to open"
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => { window.api.auth.disconnect(); setSigningIn(false) }}>Cancel</Button>
+                  </div>
+                ) : (
                 <>
                   <Spinner size="sm" />
-                  <span className={styles.waitingText}>
-                    {authStatus.status === 'waiting'
-                      ? 'Waiting for authorization in browser…'
-                      : 'Connecting…'}
-                  </span>
+                  <span className={styles.waitingText}>Connecting…</span>
                   <Button variant="ghost" size="sm" onClick={() => { window.api.auth.disconnect(); setSigningIn(false) }}>
                     Cancel
                   </Button>
                 </>
+                )
               ) : (
                 <>
                   <p className={styles.signInDesc}>
@@ -361,46 +431,76 @@ export default function SettingsPage() {
           )}
         </Section>
 
-        {/* ── Plex server — only shown once authenticated ─────────────────── */}
+        {/* -- Plex server - only shown once authenticated ------------------- */}
         {connected && (
-        <Section icon={<Server size={15} />} title="Plex Server" description="Local server address. Required even when signed in via plex.tv.">
-          <FieldRow label="Server URL" hint="e.g. http://localhost:32400">
-            <div className={styles.inputWithAction}>
-              <input
-                className={styles.textInput}
-                value={merged.baseUrl}
-                onChange={e => patch('baseUrl', e.target.value)}
-                placeholder="http://localhost:32400"
-                spellCheck={false}
-              />
+        <Section icon={<Server size={15} />} title="Plex Server" description="Your local Plex Media Server address - auto-detected after sign-in.">
+          {serverConnected && !editingServer ? (
+            /* -- Connected card -- */
+            <div className={styles.serverCard}>
+              <div className={styles.serverCardLeft}>
+                <span className={styles.serverDot} />
+                <div className={styles.serverInfo}>
+                  <span className={styles.serverName}>{serverName || 'Plex Server'}</span>
+                  <span className={styles.serverUrl}>{merged.baseUrl}</span>
+                </div>
+              </div>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
-                icon={testing ? <Spinner size="xs" color="current" /> : <RefreshCw size={12} />}
-                onClick={testConnection}
-                disabled={testing || !merged.baseUrl}
+                icon={<Pencil size={12} />}
+                onClick={() => setEditingServer(true)}
               >
-                Connect
+                Edit
               </Button>
             </div>
-            <AnimatePresence>
-              {testMsg && (
-                <motion.p
-                  className={testMsg.ok ? styles.testOk : styles.testErr}
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
+          ) : (
+            /* -- URL input (edit / first-time manual) -- */
+            <FieldRow label="Server URL" hint="e.g. http://192.168.1.x:32400">
+              <div className={styles.inputWithAction}>
+                <input
+                  className={styles.textInput}
+                  value={merged.baseUrl}
+                  onChange={e => setCfg(prev => prev ? { ...prev, baseUrl: e.target.value } : prev)}
+                  placeholder="http://localhost:32400"
+                  spellCheck={false}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={testing ? <Spinner size="xs" color="current" /> : <RefreshCw size={12} />}
+                  onClick={testConnection}
+                  disabled={testing || !merged.baseUrl}
                 >
-                  {testMsg.ok ? '✓' : '✗'} {testMsg.msg}
-                </motion.p>
-              )}
-            </AnimatePresence>
-          </FieldRow>
+                  {testing ? 'Connecting…' : 'Connect'}
+                </Button>
+                {editingServer && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<X size={12} />}
+                    onClick={() => { setEditingServer(false); setTestMsg(null) }}
+                  />
+                )}
+              </div>
+              <AnimatePresence>
+                {testMsg && (
+                  <motion.p
+                    className={testMsg.ok ? styles.testOk : styles.testErr}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    {testMsg.ok ? '✓' : '✗'} {testMsg.msg}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </FieldRow>
+          )}
         </Section>
         )}
 
-        {/* ── Libraries — only appear once server connection is established ── */}
+        {/* -- Libraries - only appear once server connection is established -- */}
         {serverConnected && (
           <Section
             icon={<SlidersHorizontal size={15} />}
@@ -420,7 +520,7 @@ export default function SettingsPage() {
             {libraries.length === 0 ? (
               <div className={styles.libsEmpty}>
                 <ServerCrash size={14} />
-                <span>No libraries loaded — ensure your server URL is connected above.</span>
+                <span>No libraries loaded - ensure your server URL is connected above.</span>
               </div>
             ) : (
               <div className={styles.libsGrid}>
@@ -455,74 +555,168 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* ── MediUX filters ─────────────────────────────────────────────── */}
-        <Section icon={<Filter size={15} />} title="MediUX Filters" description="Choose which asset types to import from MediUX sets.">
-          <div className={styles.checkGroup}>
-            {((['poster', 'backdrop', 'title_card'] as const)).map(type => (
-              <Checkbox
-                key={type}
-                label={type === 'title_card' ? 'Title Cards' : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
-                checked={merged.mediuxFilters.includes(type)}
-                onChange={checked => {
-                  const next = checked
-                    ? [...merged.mediuxFilters, type]
-                    : merged.mediuxFilters.filter(t => t !== type)
-                  patch('mediuxFilters', next)
-                }}
-              />
-            ))}
+        {/* -- Group divider ------------------------------------------------ */}
+        <div className={styles.groupDivider}>
+          <div className={styles.groupDividerLine} />
+          <span className={styles.groupDividerLabel}>
+            <span className={styles.groupDividerDot} />
+            Import &amp; Scraper Settings
+            <span className={styles.groupDividerDot} />
+          </span>
+          <div className={styles.groupDividerLine} />
+        </div>
+
+        {/* -- MediUX filters ----------------------------------------------- */}
+        <Section icon={<Filter size={15} />} title="MediUX Asset Types" description="When applying a MediUX set, only these asset types are uploaded to Plex. Unchecked types are skipped everywhere - scrape, bulk, and scheduled syncs.">
+          <div className={styles.filterOptions}>
+            {([
+              { type: 'poster',     name: 'Posters',     desc: 'Show, movie, season & collection cover art (portrait).' },
+              { type: 'backdrop',   name: 'Backdrops',   desc: 'Wide background art shown behind a title in Plex.' },
+              { type: 'title_card', name: 'Title Cards', desc: 'Per-episode thumbnails for TV shows (landscape).' },
+            ] as const).map(({ type, name, desc }) => {
+              const on = merged.mediuxFilters.includes(type)
+              return (
+                <label key={type} className={`${styles.filterOption} ${on ? styles.filterOptionOn : ''}`}>
+                  <Checkbox
+                    checked={on}
+                    onChange={checked => {
+                      const next = checked
+                        ? [...merged.mediuxFilters, type]
+                        : merged.mediuxFilters.filter(t => t !== type)
+                      autosave('mediuxFilters', next)
+                    }}
+                  />
+                  <span className={styles.filterOptionText}>
+                    <span className={styles.filterOptionName}>{name}</span>
+                    <span className={styles.filterOptionDesc}>{desc}</span>
+                  </span>
+                </label>
+              )
+            })}
           </div>
         </Section>
 
-        {/* ── Scraper ────────────────────────────────────────────────────── */}
-        <Section icon={<Sliders size={15} />} title="Scraper" description="Tune delays and concurrency to balance speed against detection risk.">
-          <div className={styles.sliderGrid}>
-            <FieldRow label="Max Workers" hint="Concurrent scrape jobs">
-              <Slider
-                min={1} max={8} step={1}
-                value={merged.maxWorkers}
-                onChange={v => patch('maxWorkers', v)}
-                ticks={8}
-              />
-            </FieldRow>
-            <FieldRow label="Request Delay" hint="Random pause between each request">
-              <RangeSlider
-                min={0} max={10} step={0.1}
-                minVal={merged.scraperMinDelay}
-                maxVal={merged.scraperMaxDelay}
-                onChange={(lo, hi) => { patch('scraperMinDelay', lo); patch('scraperMaxDelay', hi) }}
-                unit="s"
-                ticks={6}
-              />
-            </FieldRow>
-            <FieldRow label="Page Wait" hint="Random pause after page load">
-              <RangeSlider
-                min={0} max={5} step={0.1}
-                minVal={merged.scraperPageWaitMin}
-                maxVal={merged.scraperPageWaitMax}
-                onChange={(lo, hi) => { patch('scraperPageWaitMin', lo); patch('scraperPageWaitMax', hi) }}
-                unit="s"
-                ticks={6}
-              />
-            </FieldRow>
-            <FieldRow label="Batch Delay" hint="Pause between paginated pages">
-              <Slider
-                min={0} max={10} step={0.5}
-                value={merged.scraperBatchDelay}
-                onChange={v => patch('scraperBatchDelay', v)}
-                unit="s"
-                ticks={5}
-              />
-            </FieldRow>
-          </div>
+        {/* -- Scraper ------------------------------------------------------ */}
+        <Section icon={<Sliders size={15} />} title="Scraper" description="Timing and anti-detection are tuned automatically. The only knob is how many sets are fetched in parallel - higher is faster but heavier on the source sites.">
+          <FieldRow label="Max Workers" hint="Sets fetched at the same time (1 = safest, 8 = fastest)">
+            <Slider
+              min={1} max={8} step={1}
+              value={merged.maxWorkers}
+              onChange={v => autosave('maxWorkers', v)}
+              ticks={8}
+            />
+          </FieldRow>
         </Section>
 
-        {/* ── General ────────────────────────────────────────────────────── */}
+        {/* -- Library browser --------------------------------------------- */}
+        <Section
+          icon={<Film size={15} />}
+          title="Library Browser"
+          description="MediUX matches titles by TMDB ID. For libraries using TVDB/IMDb agents (e.g. anime via HAMA), add a free TMDB API key to auto-resolve them."
+        >
+          <FieldRow label="TMDB API Key" hint="Optional - themoviedb.org → Settings → API (v3 key)">
+            <input
+              className={styles.textInput}
+              type="password"
+              value={merged.tmdbApiKey ?? ''}
+              onChange={e => setCfg(prev => prev ? { ...prev, tmdbApiKey: e.target.value } : prev)}
+              onBlur={e => autosave('tmdbApiKey', e.target.value.trim())}
+              placeholder="Paste TMDB v3 API key…"
+              spellCheck={false}
+            />
+          </FieldRow>
+        </Section>
+
+        {/* -- Browser engine ---------------------------------------------- */}
+        <Section
+          icon={<Globe size={15} />}
+          title="Browser Engine"
+          description="Playwright Chromium is used for scraping poster sets from MediUX and ThePosterDB."
+          action={browserStatus && (
+            <span className={browserStatus.installed ? styles.browserBadgeOk : styles.browserBadgeWarn}>
+              {browserStatus.installed ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}
+              {browserStatus.installed ? 'Installed' : 'Not installed'}
+            </span>
+          )}
+        >
+          {browserStatus ? (
+            <div className={styles.browserSection}>
+              {browserStatus.installed ? (
+                <div className={styles.browserPath}>
+                  <span className={styles.browserPathLabel}>Executable</span>
+                  <span className={styles.browserPathValue} title={browserStatus.executablePath}>
+                    {browserStatus.executablePath || '-'}
+                  </span>
+                </div>
+              ) : (
+                <p className={styles.browserNotice}>
+                  Chromium is not installed yet. Click Install to download it automatically.
+                  Node.js must be available on your system PATH.
+                </p>
+              )}
+
+              <div className={styles.browserActions}>
+                <Button
+                  variant={browserStatus.installed ? 'ghost' : 'primary'}
+                  size="sm"
+                  icon={browserInstalling
+                    ? <Spinner size="xs" color="current" />
+                    : browserStatus.installed ? <RotateCcw size={13} /> : <Download size={13} />}
+                  onClick={installBrowser}
+                  disabled={browserInstalling}
+                >
+                  {browserInstalling
+                    ? 'Installing…'
+                    : browserStatus.installed ? 'Reinstall' : 'Install Chromium'}
+                </Button>
+              </div>
+
+              <AnimatePresence>
+                {installLog.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div className={styles.installLog} ref={installLogRef}>
+                      {installLog.map((line, i) => (
+                        <div key={i} className={styles.installLogLine}>{line}</div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className={styles.loading}><Spinner size="sm" /></div>
+          )}
+        </Section>
+
+        {/* -- Group: General ----------------------------------------------- */}
+        <div className={styles.groupDivider}>
+          <div className={styles.groupDividerLine} />
+          <span className={styles.groupDividerLabel}>
+            <span className={styles.groupDividerDot} />
+            General
+            <span className={styles.groupDividerDot} />
+          </span>
+          <div className={styles.groupDividerLine} />
+        </div>
+
+        {/* -- General ------------------------------------------------------ */}
         <Section icon={<Wrench size={15} />} title="General">
+          <FieldRow label="Tray Notification" hint="Show a notice when the app minimizes to the system tray">
+            <Switch
+              checked={merged.trayNotice ?? true}
+              onChange={v => autosave('trayNotice', v)}
+            />
+          </FieldRow>
           <FieldRow label="Append Logs" hint="Add to existing log file on restart (vs. overwrite)">
             <Switch
               checked={merged.logAppend}
-              onChange={v => patch('logAppend', v)}
+              onChange={v => autosave('logAppend', v)}
             />
           </FieldRow>
         </Section>

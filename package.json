@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",
+    "@types/node-cron": "^3.0.11",
     "cheerio": "^1.2.0",
     "concurrently": "^10.0.3",
     "electron": "^42.3.3",
@@ -46,6 +47,7 @@
     "framer-motion": "^12.40.0",
     "fuse.js": "^7.4.1",
     "lucide-react": "^1.17.0",
+    "node-cron": "^4.2.1",
     "p-limit": "^7.3.0",
     "playwright": "^1.60.0",
     "plex-oauth": "^2.2.0",

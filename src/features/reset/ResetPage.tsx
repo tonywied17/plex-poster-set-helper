@@ -9,21 +9,42 @@ import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
 import Modal from '../../components/ui/Modal'
-import type { PlexItem } from '../../../electron/ipc/types'
+import Lightbox, { type LightboxImage } from '../../components/ui/Lightbox'
+import PlexConnectBanner from '../../components/ui/PlexConnectBanner'
+import { useAppContext } from '../../app/AppContext'
+import type { AppliedRecord } from '../../../electron/ipc/types'
 import styles from './ResetPage.module.css'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Bump the width/height params on a thumb URL so the lightbox shows it larger.
+function enlarge(url?: string): string | undefined {
+  if (!url) return undefined
+  return url.replace(/width=\d+/i, 'width=700').replace(/height=\d+/i, 'height=1050')
+}
+
+// "3 days ago" style relative time.
+function timeAgo(iso?: string): string {
+  if (!iso) return ''
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24); if (d < 30) return `${d}d ago`
+  const mo = Math.floor(d / 30); if (mo < 12) return `${mo}mo ago`
+  return `${Math.floor(mo / 12)}y ago`
+}
+
+// --- Types --------------------------------------------------------------------
 
 type SourceFilter = 'all' | 'mediux' | 'posterdb'
 type TypeFilter   = 'all' | 'movie' | 'show'
 type ItemStatus   = 'idle' | 'resetting' | 'done' | 'error'
 
-interface TrackedItem extends PlexItem {
-  source: 'mediux' | 'posterdb'
+interface TrackedItem extends AppliedRecord {
+  key: string            // itemKey alias for existing markup
   resetStatus: ItemStatus
 }
 
-// ─── Stats card ───────────────────────────────────────────────────────────────
+// --- Stats card ---------------------------------------------------------------
 
 function StatCard({ label, value, sub }: { label: string; value: number; sub?: string }) {
   return (
@@ -35,9 +56,10 @@ function StatCard({ label, value, sub }: { label: string; value: number; sub?: s
   )
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function ResetPage() {
+  const { plexConnected } = useAppContext()
   const [items, setItems]           = useState<TrackedItem[]>([])
   const [loading, setLoading]       = useState(false)
   const [stats, setStats]           = useState<Record<string, number>>({})
@@ -46,30 +68,28 @@ export default function ResetPage() {
   const [search, setSearch]         = useState('')
   const [confirmAll, setConfirmAll] = useState(false)
   const [resettingAll, setResettingAll] = useState(false)
+  const [lightbox, setLightbox] = useState<number | null>(null)
 
-  // ── Load ───────────────────────────────────────────────────────────────────
+  // -- Load -------------------------------------------------------------------
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [statsRes, mediuxRes, posterdbRes] = await Promise.all([
-        window.api.plex.getStats() as Promise<Record<string, number>>,
-        window.api.plex.getLabeledItems('MediUX') as Promise<PlexItem[]>,
-        window.api.plex.getLabeledItems('ThePosterDB') as Promise<PlexItem[]>,
-      ])
-      setStats(statsRes)
+      const cfg = await window.api.config.get()
+      const records = cfg.appliedPosters ?? []
+      // One row per Plex item (latest record wins)
+      const byItem = new Map<string, AppliedRecord>()
+      for (const r of records) if (!byItem.has(r.itemKey)) byItem.set(r.itemKey, r)
+      const tracked: TrackedItem[] = [...byItem.values()].map(r => ({ ...r, key: r.itemKey, resetStatus: 'idle' as const }))
+      setItems(tracked)
 
-      const combined: TrackedItem[] = [
-        ...mediuxRes.map(i => ({ ...i, source: 'mediux' as const, resetStatus: 'idle' as const })),
-        ...posterdbRes.map(i => ({ ...i, source: 'posterdb' as const, resetStatus: 'idle' as const })),
-      ]
-      // deduplicate by key
-      const seen = new Set<string>()
-      setItems(combined.filter(i => {
-        if (seen.has(i.key)) return false
-        seen.add(i.key)
-        return true
-      }))
+      setStats({
+        total:    tracked.length,
+        mediux:   tracked.filter(i => i.source === 'mediux').length,
+        posterdb: tracked.filter(i => i.source === 'posterdb').length,
+        movies:   tracked.filter(i => i.type === 'movie').length,
+        shows:    tracked.filter(i => i.type === 'show').length,
+      })
     } finally {
       setLoading(false)
     }
@@ -77,19 +97,27 @@ export default function ResetPage() {
 
   useEffect(() => { load() }, [load])
 
-  // ── Reset single ───────────────────────────────────────────────────────────
+  // Remove an item from the local applied history.
+  async function forgetItem(key: string) {
+    const cfg = await window.api.config.get()
+    const next = (cfg.appliedPosters ?? []).filter(r => r.itemKey !== key)
+    await window.api.config.set({ appliedPosters: next })
+  }
+
+  // -- Reset single -----------------------------------------------------------
 
   async function resetOne(key: string) {
     setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'resetting' } : i))
     try {
       await window.api.plex.resetPoster(key, true)
+      await forgetItem(key)
       setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'done' } : i))
     } catch {
       setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'error' } : i))
     }
   }
 
-  // ── Reset all ──────────────────────────────────────────────────────────────
+  // -- Reset all --------------------------------------------------------------
 
   async function resetAll() {
     setConfirmAll(false)
@@ -101,7 +129,7 @@ export default function ResetPage() {
     setResettingAll(false)
   }
 
-  // ── Filtered list ──────────────────────────────────────────────────────────
+  // -- Filtered list ----------------------------------------------------------
 
   const filtered = items.filter(i => {
     if (sourceFilter !== 'all' && i.source !== sourceFilter) return false
@@ -112,12 +140,20 @@ export default function ResetPage() {
 
   const doneCount = filtered.filter(i => i.resetStatus === 'done').length
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const lightboxImages: LightboxImage[] = filtered.map(i => ({
+    url: enlarge(i.thumb) ?? i.thumb ?? '',
+    label: i.year ? `${i.title} (${i.year})` : i.title,
+    caption: `${i.source === 'mediux' ? 'MediUX' : 'ThePosterDB'} · ${i.libraryTitle ?? ''}`.trim(),
+  }))
+
+  // --- Render ----------------------------------------------------------------
 
   return (
     <div className={styles.page}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {!plexConnected && <PlexConnectBanner />}
+
+      {/* -- Header ----------------------------------------------------------- */}
       <div className={styles.header}>
         <div>
           <h1 className="page-title">Reset Posters</h1>
@@ -149,7 +185,7 @@ export default function ResetPage() {
         </div>
       </div>
 
-      {/* ── Stats row ──────────────────────────────────────────────────────── */}
+      {/* -- Stats row -------------------------------------------------------- */}
       {!loading && items.length > 0 && (
         <div className={styles.statsRow}>
           <StatCard label="Total" value={stats.total ?? items.length} />
@@ -160,7 +196,7 @@ export default function ResetPage() {
         </div>
       )}
 
-      {/* ── Filters ────────────────────────────────────────────────────────── */}
+      {/* -- Filters ---------------------------------------------------------- */}
       {items.length > 0 && (
         <div className={styles.filters}>
           <input
@@ -197,7 +233,7 @@ export default function ResetPage() {
         </div>
       )}
 
-      {/* ── Item list ──────────────────────────────────────────────────────── */}
+      {/* -- Item list -------------------------------------------------------- */}
       <div className={styles.list}>
         {loading ? (
           <div className={styles.loadingCenter}>
@@ -207,10 +243,10 @@ export default function ResetPage() {
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={<CheckCircle2 size={22} />}
-            title={items.length === 0 ? 'No custom posters found' : 'No results'}
+            title={items.length === 0 ? 'Nothing applied yet' : 'No results'}
             description={
               items.length === 0
-                ? 'No Plex items are labeled with MediUX or ThePosterDB tags yet.'
+                ? 'Posters you apply from the Library Browser show up here, ready to revert to original Plex art.'
                 : 'Try adjusting your filters or search.'
             }
           />
@@ -226,11 +262,16 @@ export default function ResetPage() {
                 transition={{ duration: 0.15 }}
                 layout
               >
-                {/* thumb */}
-                <div className={styles.thumb}>
+                {/* thumb — click to view full size */}
+                <button
+                  className={styles.thumb}
+                  onClick={() => setLightbox(filtered.findIndex(f => f.key === item.key))}
+                  title="View poster"
+                  disabled={!item.thumb}
+                >
                   {item.thumb ? (
                     <img
-                      src={`${window.api.plex ? '' : ''}${item.thumb}`}
+                      src={item.thumb}
                       alt={item.title}
                       className={styles.thumbImg}
                       loading="lazy"
@@ -241,7 +282,7 @@ export default function ResetPage() {
                       {item.type === 'movie' ? <Film size={14} /> : <Tv2 size={14} />}
                     </div>
                   )}
-                </div>
+                </button>
 
                 {/* info */}
                 <div className={styles.itemInfo}>
@@ -253,6 +294,7 @@ export default function ResetPage() {
                       {item.type === 'movie' ? 'Movie' : 'Show'}
                     </Badge>
                     <span className={styles.libraryName}>{item.libraryTitle}</span>
+                    {item.appliedAt && <span className={styles.appliedAt}>· applied {timeAgo(item.appliedAt)}</span>}
                   </div>
                 </div>
 
@@ -286,7 +328,7 @@ export default function ResetPage() {
         )}
       </div>
 
-      {/* ── Confirm all modal ───────────────────────────────────────────────── */}
+      {/* -- Confirm all modal ------------------------------------------------- */}
       <Modal
         open={confirmAll}
         onClose={() => setConfirmAll(false)}
@@ -304,6 +346,12 @@ export default function ResetPage() {
           </Button>
         </div>
       </Modal>
+
+      <AnimatePresence>
+        {lightbox !== null && lightbox >= 0 && (
+          <Lightbox images={lightboxImages} index={lightbox} onClose={() => setLightbox(null)} />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

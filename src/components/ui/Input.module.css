@@ -87,7 +87,7 @@
   caret-color: var(--color-accent-primary);
 }
 
-/* No label — remove float padding */
+/* No label - remove float padding */
 .inputWrap:not(:has(.label)) .input {
   padding-top: var(--space-3);
 }

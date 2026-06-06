@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppConfig, ScrapeProgress, LogEntry, PlexAuthStatus, UpdateInfo } from './ipc/types'
+import type { AppConfig, ScrapeProgress, LogEntry, PlexAuthStatus, UpdateInfo, ScheduledJob, BrowserStatus, SectionItemsReq, BrowseSetsReq, UserSetsReq } from './ipc/types'
+// (response types are inferred via the invoke return type)
 
 const api = {
   // Window controls
@@ -16,13 +17,27 @@ const api = {
     getLibraries: () => ipcRenderer.invoke('plex:getLibraries'),
     findItem: (title: string, year?: number, libraries?: string[]) =>
       ipcRenderer.invoke('plex:findItem', { title, year, libraries: libraries ?? [] }),
-    uploadPoster: (itemKey: string, imageUrl: string, source: 'mediux' | 'posterdb') =>
-      ipcRenderer.invoke('plex:uploadPoster', { itemKey, imageUrl, source }),
+    uploadPoster: (
+      itemKey: string,
+      imageUrl: string,
+      source: 'mediux' | 'posterdb',
+      season?: number | 'Cover' | 'Backdrop',
+      episode?: number,
+    ) =>
+      ipcRenderer.invoke('plex:uploadPoster', { itemKey, imageUrl, source, season, episode }),
     getLabeledItems: (label: string) =>
       ipcRenderer.invoke('plex:getLabeledItems', { label }),
     resetPoster: (itemKey: string, hierarchical?: boolean) =>
       ipcRenderer.invoke('plex:resetPoster', { itemKey, hierarchical }),
     getStats: () => ipcRenderer.invoke('plex:getStats'),
+  },
+
+  // Library browser (AURA-style)
+  library: {
+    sections: () => ipcRenderer.invoke('library:sections'),
+    items: (req: SectionItemsReq) => ipcRenderer.invoke('library:items', req),
+    sets: (req: BrowseSetsReq) => ipcRenderer.invoke('library:sets', req),
+    userSets: (req: UserSetsReq) => ipcRenderer.invoke('library:userSets', req),
   },
 
   // Scraping
@@ -80,6 +95,32 @@ const api = {
     onUpdateReady: (cb: () => void) => {
       ipcRenderer.on('app:updateReady', cb)
       return () => ipcRenderer.removeListener('app:updateReady', cb)
+    },
+  },
+
+  // Scheduler
+  scheduler: {
+    list: (): Promise<ScheduledJob[]>             => ipcRenderer.invoke('scheduler:list'),
+    save: (job: ScheduledJob): Promise<ScheduledJob> => ipcRenderer.invoke('scheduler:save', job),
+    delete: (id: string): Promise<void>          => ipcRenderer.invoke('scheduler:delete', id),
+    runNow: (id: string): Promise<void>          => ipcRenderer.invoke('scheduler:runNow', id),
+    setAutoStart: (v: boolean): Promise<void>    => ipcRenderer.invoke('scheduler:setAutoStart', v),
+    getAutoStart: (): Promise<boolean>           => ipcRenderer.invoke('scheduler:getAutoStart'),
+    onChange: (cb: (jobs: ScheduledJob[]) => void) => {
+      const handler = (_: unknown, data: ScheduledJob[]) => cb(data)
+      ipcRenderer.on('scheduler:onChange', handler)
+      return () => ipcRenderer.removeListener('scheduler:onChange', handler)
+    },
+  },
+
+  // Browser / Playwright
+  browser: {
+    getStatus: (): Promise<BrowserStatus>  => ipcRenderer.invoke('browser:status'),
+    install:   (): Promise<void>           => ipcRenderer.invoke('browser:install'),
+    onInstallProgress: (cb: (line: string) => void) => {
+      const handler = (_: unknown, line: string) => cb(line)
+      ipcRenderer.on('browser:installProgress', handler)
+      return () => ipcRenderer.removeListener('browser:installProgress', handler)
     },
   },
 

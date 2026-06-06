@@ -6,7 +6,7 @@ import { Logger } from '../services/logger'
 import { ConfigService } from '../services/config'
 import type { PosterInfo, ScrapeProgress } from '../ipc/types'
 
-// ─── URL classification ───────────────────────────────────────────────────────
+// --- URL classification -------------------------------------------------------
 
 export type ScraperSource = 'posterdb' | 'mediux' | 'unknown'
 
@@ -16,7 +16,7 @@ export function classifyUrl(url: string): ScraperSource {
   return 'unknown'
 }
 
-// ─── Scraper instances (reused across calls within a session) ─────────────────
+// --- Scraper instances (reused across calls within a session) -----------------
 
 let _posterdb: PosterdbScraper | null = null
 let _mediux: MediuxScraper | null = null
@@ -38,12 +38,12 @@ function getScraper(source: ScraperSource): BaseScraper | null {
   return null
 }
 
-// ─── Factory ──────────────────────────────────────────────────────────────────
+// --- Factory ------------------------------------------------------------------
 
 export type ProgressCallback = (progress: ScrapeProgress) => void
 
 export const ScraperFactory = {
-  // ── Scrape a single URL ────────────────────────────────────────────────────
+  // -- Scrape a single URL ----------------------------------------------------
   async scrapeUrl(
     url: string,
     onProgress: ProgressCallback,
@@ -73,7 +73,7 @@ export const ScraperFactory = {
     }
   },
 
-  // ── Scrape multiple URLs with concurrency cap ──────────────────────────────
+  // -- Scrape multiple URLs with concurrency cap ------------------------------
   async scrapeMany(
     urls: string[],
     onProgress: ProgressCallback,
@@ -96,7 +96,7 @@ export const ScraperFactory = {
     return results
   },
 
-  // ── Abort all in-flight scrapes ────────────────────────────────────────────
+  // -- Abort all in-flight scrapes --------------------------------------------
   abort(): void {
     _aborted = true
     _posterdb?.abort()
@@ -104,7 +104,7 @@ export const ScraperFactory = {
     Logger.info('ScraperFactory', 'Scrape session aborted')
   },
 
-  // ── Close browser instances (end of session) ───────────────────────────────
+  // -- Close browser instances (end of session) -------------------------------
   async close(): Promise<void> {
     await Promise.allSettled([
       _posterdb?.close(),
@@ -116,7 +116,17 @@ export const ScraperFactory = {
     Logger.info('ScraperFactory', 'Scraper browsers closed')
   },
 
-  // ── Quick validation helper for the UI ────────────────────────────────────
+  // -- Library browser: list MediUX sets for a TMDB title --------------------
+  async browseMediux(tmdbId: string, type: 'movie' | 'show') {
+    return getMediux().browseSets(tmdbId, type)
+  },
+
+  // -- Library browser: list a creator's recent sets -------------------------
+  async browseMediuxUser(username: string) {
+    return getMediux().browseUserSets(username)
+  },
+
+  // -- Quick validation helper for the UI ------------------------------------
   isSupported(url: string): boolean {
     return classifyUrl(url) !== 'unknown'
   },
@@ -126,11 +136,14 @@ export const ScraperFactory = {
     return src === 'unknown' ? null : src
   },
 
-  // ── Expose internals so the scrape tab can show URL-type metadata ──────────
+  // -- Expose internals so the scrape tab can show URL-type metadata ----------
   describeUrl(url: string): { source: ScraperSource; type?: string } {
     const source = classifyUrl(url)
     if (source === 'posterdb') return { source, type: posterdbUrlType(url) }
-    if (source === 'mediux')   return { source, type: 'set' }
+    if (source === 'mediux') {
+      const type = url.includes('/boxsets/') ? 'boxset' : url.includes('/shows/') ? 'show' : 'set'
+      return { source, type }
+    }
     return { source }
   },
 }

@@ -19,13 +19,19 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background var(--duration-fast), border-color var(--duration-fast);
+  transition: background var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast);
   color: #0d0f14;
 }
 
+.wrapper:hover .box:not(.checked) {
+  border-color: rgba(229, 160, 13, 0.4);
+  background: rgba(229, 160, 13, 0.05);
+}
+
 .box.checked {
-  background: var(--color-accent-primary);
-  border-color: var(--color-accent-primary);
+  background: var(--color-accent-interactive);
+  border-color: var(--color-accent-interactive);
+  box-shadow: 0 0 0 3px var(--color-accent-interactive-dim);
 }
 
 .dash {

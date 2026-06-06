@@ -306,7 +306,7 @@ The GUI provides an intuitive interface with multiple tabs:
 - Set up movie and TV show libraries
 - Configure MediUX download filters
 - Adjust concurrent worker settings (1 to CPU core count)
- - Sign in with Plex via browser PIN (TV-code) — open the browser, follow the link, or enter the code shown; the app will poll for authorization and automatically populate and save the Plex token to `config.json`.
+ - Sign in with Plex via browser PIN (TV-code) - open the browser, follow the link, or enter the code shown; the app will poll for authorization and automatically populate and save the Plex token to `config.json`.
 
 ### Plex Sign-in (Browser PIN / TV-code)
 
@@ -536,7 +536,7 @@ A pre-built Windows executable is available in the `dist/` folder. To build it y
 **Checks & Fixes:**
 - If the dialog didn't open your browser, copy the link shown in the dialog (https://plex.tv/link?code=...) and paste it into your browser manually.  
 - If you see an "expired code" or authorization failed, request a new PIN by clicking **Sign in with Plex** again and complete the flow promptly (PIN codes expire quickly).  
-- Ensure your machine has internet access and that no firewall / proxy is blocking outbound requests to `plex.tv` — the app polls Plex to detect authorization.  
+- Ensure your machine has internet access and that no firewall / proxy is blocking outbound requests to `plex.tv` - the app polls Plex to detect authorization.  
 - If the app cannot write the token to `config.json`, check file permissions and that the app is running in a folder where it can write files.  
 - If polling times out, retry the flow and watch the Log Viewer for detailed messages (open the Log Viewer from the top link bar).  
 - To preserve logs across restarts when troubleshooting, set `"log_append": true` in `config.json` so the full `debug.log` is kept between runs.  

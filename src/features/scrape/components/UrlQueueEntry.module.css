@@ -18,7 +18,7 @@
     0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
-/* ── Row ─────────────────────────────────────────────────────────────────── */
+/* -- Row ------------------------------------------------------------------- */
 
 .row {
   display: flex;
@@ -28,7 +28,7 @@
   min-height: 40px;
 }
 
-/* ── Drag handle ─────────────────────────────────────────────────────────── */
+/* -- Drag handle ----------------------------------------------------------- */
 
 .dragHandle {
   display: flex;
@@ -49,7 +49,7 @@
 .dragHandle:hover { color: var(--color-text-muted); }
 .dragHandle:active { cursor: grabbing; }
 
-/* ── Source badge ────────────────────────────────────────────────────────── */
+/* -- Source badge ---------------------------------------------------------- */
 
 .sourceBadge {
   flex-shrink: 0;
@@ -59,7 +59,7 @@
   font-weight: var(--font-semibold);
 }
 
-/* ── URL text ────────────────────────────────────────────────────────────── */
+/* -- URL text -------------------------------------------------------------- */
 
 .urlText {
   flex: 1;
@@ -72,7 +72,7 @@
   min-width: 0;
 }
 
-/* ── Status area ─────────────────────────────────────────────────────────── */
+/* -- Status area ----------------------------------------------------------- */
 
 .statusArea {
   flex-shrink: 0;
@@ -116,7 +116,7 @@
   color: var(--color-accent-error);
 }
 
-/* ── Row actions ─────────────────────────────────────────────────────────── */
+/* -- Row actions ----------------------------------------------------------- */
 
 .rowActions {
   display: flex;
@@ -167,36 +167,124 @@
   background: rgba(248, 113, 113, 0.08);
 }
 
-/* ── Poster grid ─────────────────────────────────────────────────────────── */
+/* -- Poster grid ----------------------------------------------------------- */
 
 .posterSection {
   border-top: 1px solid var(--color-border-subtle);
+  padding: var(--space-2) var(--space-1) var(--space-2);
+}
+
+/* -- Grouped poster sections ----------------------------------------------- */
+
+.posterGroup { padding: var(--space-1) var(--space-2); }
+
+.posterGroupLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-2) 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.posterGroupCount {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--color-text-muted);
 }
 
 .posterGrid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
 }
 
-/* ── Poster thumbnail ────────────────────────────────────────────────────── */
+.posterGridWide { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.posterGridWide .thumb { aspect-ratio: 16 / 9; }
+
+/* Zoom-to-view button (top-right of each thumb) */
+.zoomBtn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast), background var(--duration-fast);
+  z-index: 2;
+}
+.thumb:hover .zoomBtn { opacity: 1; }
+.zoomBtn:hover { background: var(--color-accent); color: var(--color-accent-contrast); }
+
+/* "Already applied to this title" marker (top-left) */
+.inLibBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  z-index: 2;
+}
+
+/* "This exact poster is applied" badge (top-left, stronger) */
+.appliedBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(63, 185, 80, 0.92);
+  color: #07140a;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* -- Poster thumbnail ------------------------------------------------------ */
 
 .thumb {
   position: relative;
-  width: 52px;
-  height: 78px;
-  border-radius: var(--radius-sm);
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--color-bg-elevated);
   cursor: pointer;
-  flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.04);
-  transition: border-color var(--duration-fast);
+  transition: border-color var(--duration-fast), transform var(--duration-fast);
+  /* Skip rendering work for off-screen thumbnails - major scroll perf win */
+  content-visibility: auto;
+  contain-intrinsic-size: 168px;
 }
 
 .thumb:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: scale(1.04);
+  z-index: 1;
 }
 
 .thumbImg {
@@ -223,7 +311,7 @@
   user-select: none;
 }
 
-/* ── Overlay states ──────────────────────────────────────────────────────── */
+/* -- Overlay states -------------------------------------------------------- */
 
 .overlay {
   position: absolute;
@@ -266,7 +354,7 @@
   color: var(--color-accent-primary);
 }
 
-/* ── Spinner keyframe ────────────────────────────────────────────────────── */
+/* -- Spinner keyframe ------------------------------------------------------ */
 
 .spin {
   animation: spin 0.8s linear infinite;

@@ -3,7 +3,7 @@ import { BaseScraper, sleepConfig } from './baseScraper'
 import { Logger } from '../services/logger'
 import type { PosterInfo } from '../ipc/types'
 
-// ─── URL helpers ──────────────────────────────────────────────────────────────
+// --- URL helpers --------------------------------------------------------------
 
 const BASE = 'https://theposterdb.com'
 
@@ -19,7 +19,7 @@ function posterDownloadUrl(posterId: string): string {
   return `${BASE}/api/media/${posterId}/download`
 }
 
-// ─── Metadata parsing ─────────────────────────────────────────────────────────
+// --- Metadata parsing ---------------------------------------------------------
 
 interface RawCard {
   posterId: string
@@ -55,12 +55,12 @@ function parseCards($: cheerio.CheerioAPI): RawCard[] {
     if (!posterIdMatch) return
     const posterId = posterIdMatch[1]
 
-    // Thumbnail URL — the img src already shown in the card grid
+    // Thumbnail URL - the img src already shown in the card grid
     const imgEl = $el.find('img').first()
     const rawThumb = imgEl.attr('src') ?? imgEl.attr('data-src') ?? imgEl.attr('data-lazy-src') ?? ''
     const thumbUrl = rawThumb.startsWith('http') ? rawThumb : rawThumb ? `${BASE}${rawThumb}` : ''
 
-    // Title text — PosterDB puts it in an overlay paragraph or card-title
+    // Title text - PosterDB puts it in an overlay paragraph or card-title
     const titleEl = $el.find('[class*="title"], .card-title, .fs-6, .fw-bold').first()
     const rawTitle = titleEl.text().trim() ||
       $el.find('p').first().text().trim() ||
@@ -93,7 +93,7 @@ function cardsToPosters(cards: RawCard[]): PosterInfo[] {
   }))
 }
 
-// ─── Scraper ──────────────────────────────────────────────────────────────────
+// --- Scraper ------------------------------------------------------------------
 
 export class PosterdbScraper extends BaseScraper {
   async scrape(url: string): Promise<PosterInfo[]> {
@@ -110,7 +110,7 @@ export class PosterdbScraper extends BaseScraper {
     }
   }
 
-  // ── Set page ──────────────────────────────────────────────────────────────
+  // -- Set page --------------------------------------------------------------
 
   async scrapeSet(url: string): Promise<PosterInfo[]> {
     const { context, page } = await this.newContext()
@@ -120,7 +120,7 @@ export class PosterdbScraper extends BaseScraper {
       const $ = cheerio.load(html)
       const cards = parseCards($)
       const posters = cardsToPosters(cards)
-      Logger.scrape('PosterDB', `Set ${url} — ${posters.length} posters found`)
+      Logger.scrape('PosterDB', `Set ${url} - ${posters.length} posters found`)
       return posters
     } catch (err) {
       Logger.error('PosterDB', `scrapeSet failed: ${err instanceof Error ? err.message : err}`)
@@ -130,7 +130,7 @@ export class PosterdbScraper extends BaseScraper {
     }
   }
 
-  // ── Single poster → find parent set, recurse ──────────────────────────────
+  // -- Single poster → find parent set, recurse ------------------------------
 
   async scrapeSinglePoster(url: string): Promise<PosterInfo[]> {
     const { context, page } = await this.newContext()
@@ -159,7 +159,7 @@ export class PosterdbScraper extends BaseScraper {
     }
   }
 
-  // ── User uploads — paginate through all pages ─────────────────────────────
+  // -- User uploads - paginate through all pages -----------------------------
 
   async scrapeUserUploads(url: string): Promise<PosterInfo[]> {
     const allPosters: PosterInfo[] = []
@@ -194,7 +194,7 @@ export class PosterdbScraper extends BaseScraper {
       }
     }
 
-    Logger.scrape('PosterDB', `User uploads ${url} — ${allPosters.length} total posters`)
+    Logger.scrape('PosterDB', `User uploads ${url} - ${allPosters.length} total posters`)
     return allPosters
   }
 

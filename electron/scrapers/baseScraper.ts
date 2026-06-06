@@ -2,7 +2,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { ConfigService } from '../services/config'
 import type { PosterInfo } from '../ipc/types'
 
-// ─── Rotation pools ───────────────────────────────────────────────────────────
+// --- Rotation pools -----------------------------------------------------------
 
 export const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -20,7 +20,7 @@ export const VIEWPORTS = [
   { width: 1366, height: 768 },
 ]
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 export function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -46,7 +46,7 @@ export async function sleepConfig(type: 'min' | 'batch' | 'initial' | 'pageWait'
   if (ms > 0) await sleep(ms)
 }
 
-// ─── Abstract base ────────────────────────────────────────────────────────────
+// --- Abstract base ------------------------------------------------------------
 
 export abstract class BaseScraper {
   protected _browser: Browser | null = null
@@ -54,12 +54,21 @@ export abstract class BaseScraper {
 
   abstract scrape(url: string): Promise<PosterInfo[]>
 
-  // ── Browser lifecycle ──────────────────────────────────────────────────────
+  // -- Browser lifecycle ------------------------------------------------------
 
   async getBrowser(): Promise<Browser> {
     if (!this._browser || !this._browser.isConnected()) {
+      // PLEX_BROWSER_EXEC is set by PlaywrightService.setupEnv() - bypasses playwright's
+      // internal registry lookup so we always use the managed browser in userData/browsers
+      const executablePath = process.env.PLEX_BROWSER_EXEC
+      if (!executablePath) {
+        throw new Error(
+          'Chromium browser is not installed. Open Settings → Browser Engine and click Install.',
+        )
+      }
       this._browser = await chromium.launch({
         headless: true,
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-dev-shm-usage',

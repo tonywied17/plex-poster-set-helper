@@ -6,7 +6,7 @@
   min-height: 0;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
+/* -- Header --------------------------------------------------------------- */
 
 .header {
   display: flex;
@@ -23,7 +23,7 @@
   flex-shrink: 0;
 }
 
-/* ── Stats row ───────────────────────────────────────────────────────────── */
+/* -- Stats row ------------------------------------------------------------- */
 
 .statsRow {
   display: flex;
@@ -67,7 +67,7 @@
   color: var(--color-text-disabled);
 }
 
-/* ── Filters ─────────────────────────────────────────────────────────────── */
+/* -- Filters --------------------------------------------------------------- */
 
 .filters {
   display: flex;
@@ -135,7 +135,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── List ────────────────────────────────────────────────────────────────── */
+/* -- List ------------------------------------------------------------------ */
 
 .list {
   flex: 1;
@@ -163,7 +163,7 @@
   color: var(--color-text-muted);
 }
 
-/* ── Item row ────────────────────────────────────────────────────────────── */
+/* -- Item row -------------------------------------------------------------- */
 
 .itemRow {
   display: flex;
@@ -197,7 +197,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), transform var(--duration-fast);
 }
+.thumb:hover:not(:disabled) { border-color: var(--color-accent); transform: scale(1.06); }
+.thumb:disabled { cursor: default; }
+
+.appliedAt { font-size: var(--text-xs); color: var(--color-text-muted); }
 
 .thumbImg {
   width: 100%;
@@ -270,7 +277,7 @@
   color: var(--color-accent-error);
 }
 
-/* ── Confirm modal ───────────────────────────────────────────────────────── */
+/* -- Confirm modal --------------------------------------------------------- */
 
 .confirmText {
   font-size: var(--text-sm);

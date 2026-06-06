@@ -1,33 +1,34 @@
 import { useEffect, useState } from 'react'
-import type { NavTab } from '../../app/App'
+import { Settings } from 'lucide-react'
+import { useAppContext } from '../../app/AppContext'
 import styles from './StatusBar.module.css'
 
-interface Props {
-  activeTab: NavTab
-}
-
-export default function StatusBar({ activeTab: _activeTab }: Props) {
+export default function StatusBar() {
+  const { plexConnected, navigate } = useAppContext()
   const [version, setVersion] = useState('')
-  const [connected, setConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
     window.api.app.getVersion().then(setVersion)
   }, [])
 
-  useEffect(() => {
-    window.api.auth.getStatus().then(s => setConnected(s.status === 'authorized'))
-    const unsub = window.api.auth.onStatusChange(s => setConnected(s.status === 'authorized'))
-    return () => { unsub() }
-  }, [])
-
-  const dotClass = connected === null ? styles.dotUnknown : connected ? styles.dotOn : styles.dotOff
-  const label = connected === null ? 'Connecting…' : connected ? 'Connected to Plex' : 'Not connected'
+  const dotClass = styles[plexConnected ? 'dotOn' : 'dotOff']
+  const label    = plexConnected ? 'Connected to Plex' : 'Not connected to Plex'
 
   return (
     <div className={styles.bar}>
       <div className={styles.left}>
-        <span className={`${styles.dot} ${dotClass}`} />
-        <span className={styles.text}>{label}</span>
+        {plexConnected ? (
+          <>
+            <span className={`${styles.dot} ${dotClass}`} />
+            <span className={styles.text}>{label}</span>
+          </>
+        ) : (
+          <button className={styles.connectBtn} onClick={() => navigate('settings')}>
+            <span className={`${styles.dot} ${dotClass}`} />
+            <span className={styles.text}>{label}</span>
+            <Settings size={10} className={styles.settingsIcon} />
+          </button>
+        )}
       </div>
       <div className={styles.right}>
         {version && <span className={styles.text}>v{version}</span>}

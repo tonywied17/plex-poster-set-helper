@@ -5,9 +5,10 @@ import type {
   ConnectReq, ConnectRes, Library,
   FindItemReq, PlexItem, UploadReq, UploadRes,
   LabelReq, ResetReq,
+  LibrarySection, SectionItemsReq, SectionItemsRes, LibraryItem,
 } from '../ipc/types'
 
-// ─── Internal state ───────────────────────────────────────────────────────────
+// --- Internal state -----------------------------------------------------------
 
 interface PlexConnection {
   baseUrl: string
@@ -18,7 +19,7 @@ interface PlexConnection {
 
 let _conn: PlexConnection | null = null
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function plexHeaders(token: string): Record<string, string> {
   return {
@@ -43,10 +44,34 @@ async function plexFetch(
       ...(options?.headers as Record<string, string> ?? {}),
     },
   })
-  if (!res.ok) throw new Error(`Plex ${res.status} ${res.statusText} — ${path}`)
+  if (!res.ok) throw new Error(`Plex ${res.status} ${res.statusText} - ${path}`)
   const text = await res.text()
   if (!text.trim()) return {}
   try { return JSON.parse(text) } catch { return text }
+}
+
+// Extract external IDs (tmdb/tvdb/imdb) from a Plex item's guids. Handles both
+// the modern Guid[] array (plex agent) and legacy single-guid strings such as
+// com.plexapp.agents.themoviedb://1234, com.plexapp.agents.hama://tvdb-458912.
+function extractGuids(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  m: any,
+): { tmdbId?: string; tvdbId?: string; imdbId?: string } {
+  const out: { tmdbId?: string; tvdbId?: string; imdbId?: string } = {}
+
+  const assign = (raw: string) => {
+    const s = raw.toLowerCase()
+    let mm: RegExpMatchArray | null
+    if ((mm = s.match(/tmdb:\/\/(\d+)/)) || (mm = s.match(/themoviedb:\/\/(\d+)/))) out.tmdbId ??= mm[1]
+    if ((mm = s.match(/tvdb[:-](\d+)/)) || (mm = s.match(/thetvdb:\/\/(\d+)/)))    out.tvdbId ??= mm[1]
+    if ((mm = s.match(/imdb:\/\/(tt\d+)/)))                                         out.imdbId ??= mm[1]
+  }
+
+  if (typeof m.guid === 'string') assign(m.guid)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const g of (m.Guid ?? []) as Array<{ id?: string }>) if (g.id) assign(g.id)
+
+  return out
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,19 +88,19 @@ function mapMetadata(m: any, libraryTitle: string, libraryType: 'movie' | 'show'
   }
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
+// --- Service ------------------------------------------------------------------
 
 export const PlexService = {
   getConnection: () => _conn,
 
-  // ── Connect ─────────────────────────────────────────────────────────────────
+  // -- Connect -----------------------------------------------------------------
   async connect(req: ConnectReq): Promise<ConnectRes> {
     try {
       const data = await plexFetch(req.baseUrl, req.token, '/') as { MediaContainer?: { friendlyName?: string } }
       const serverName = data?.MediaContainer?.friendlyName ?? 'Plex Server'
       const libraries = await PlexService.fetchLibraries(req.baseUrl, req.token)
       _conn = { baseUrl: req.baseUrl, token: req.token, serverName, libraries }
-      Logger.success('Plex', `Connected to "${serverName}" — ${libraries.length} libraries`)
+      Logger.success('Plex', `Connected to "${serverName}" - ${libraries.length} libraries`)
       return { success: true, serverName, libraryCount: libraries.length }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
@@ -85,7 +110,7 @@ export const PlexService = {
     }
   },
 
-  // ── Libraries ────────────────────────────────────────────────────────────────
+  // -- Libraries ----------------------------------------------------------------
   async fetchLibraries(baseUrl: string, token: string): Promise<Library[]> {
     const data = await plexFetch(baseUrl, token, '/library/sections') as {
       MediaContainer?: { Directory?: Array<{ key: string; title: string; type: string }> }
@@ -95,7 +120,7 @@ export const PlexService = {
       .map(d => ({ key: d.key, title: d.title, type: d.type as 'movie' | 'show' }))
   },
 
-  // ── Find item (fuzzy) ────────────────────────────────────────────────────────
+  // -- Find item (fuzzy) --------------------------------------------------------
   async findInLibrary(req: FindItemReq): Promise<PlexItem | null> {
     if (!_conn) return null
     const { baseUrl, token, libraries: allLibs } = _conn
@@ -114,7 +139,7 @@ export const PlexService = {
           candidates.push(mapMetadata(m, lib.title, lib.type as 'movie' | 'show'))
         }
       } catch {
-        // section may not support the search type — skip silently
+        // section may not support the search type - skip silently
       }
     }
     if (!candidates.length) return null
@@ -130,7 +155,86 @@ export const PlexService = {
     return fuse.search(title)[0]?.item ?? null
   },
 
-  // ── Labeled items ────────────────────────────────────────────────────────────
+  // -- Library browser: sections ------------------------------------------------
+  async getSections(): Promise<LibrarySection[]> {
+    if (!_conn) return []
+    return _conn.libraries
+      .filter(l => l.type === 'movie' || l.type === 'show')
+      .map(l => ({ key: l.key, title: l.title, type: l.type as 'movie' | 'show' }))
+  },
+
+  // -- Library browser: paginated items with external IDs -----------------------
+  async getSectionItems(req: SectionItemsReq): Promise<SectionItemsRes> {
+    if (!_conn) return { items: [], total: 0 }
+    const { baseUrl, token, libraries } = _conn
+    const lib = libraries.find(l => l.key === req.sectionKey)
+    if (!lib) return { items: [], total: 0 }
+
+    const type = lib.type === 'movie' ? 1 : 2
+    const params = new URLSearchParams({
+      type: String(type),
+      includeGuids: '1',
+      'X-Plex-Container-Start': String(req.offset),
+      'X-Plex-Container-Size': String(req.limit),
+      sort: 'titleSort',
+    })
+    if (req.search?.trim()) params.set('title', req.search.trim())
+
+    const data = await plexFetch(
+      baseUrl, token,
+      `/library/sections/${lib.key}/all?${params.toString()}`,
+    ) as { MediaContainer?: { totalSize?: number; size?: number; Metadata?: unknown[] } }
+
+    const mc = data?.MediaContainer
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items: LibraryItem[] = (mc?.Metadata ?? []).map((m: any) => {
+      const guids = extractGuids(m)
+      const thumbPath = m.thumb as string | undefined
+      const thumb = thumbPath
+        ? `${baseUrl.replace(/\/$/, '')}/photo/:/transcode?width=240&height=360&minSize=1&upscale=1&url=${encodeURIComponent(thumbPath)}&X-Plex-Token=${token}`
+        : undefined
+      return {
+        key: m.ratingKey as string,
+        title: m.title as string,
+        year: m.year as number | undefined,
+        type: lib.type as 'movie' | 'show',
+        thumb,
+        ...guids,
+      }
+    })
+
+    return { items, total: mc?.totalSize ?? mc?.size ?? items.length }
+  },
+
+  // -- Library browser: resolve a TMDB id (direct, or via tvdb/imdb + key) -------
+  async resolveTmdbId(item: LibraryItem): Promise<string | null> {
+    if (item.tmdbId) return item.tmdbId
+
+    const key = ConfigService.get().tmdbApiKey?.trim()
+    if (!key) return null
+
+    const external = item.tvdbId
+      ? { source: 'tvdb_id', value: item.tvdbId }
+      : item.imdbId ? { source: 'imdb_id', value: item.imdbId } : null
+    if (!external) return null
+
+    try {
+      const url = `https://api.themoviedb.org/3/find/${external.value}?external_source=${external.source}&api_key=${key}`
+      const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) return null
+      const body = await res.json() as {
+        movie_results?: Array<{ id: number }>
+        tv_results?: Array<{ id: number }>
+      }
+      const hit = item.type === 'movie' ? body.movie_results?.[0] : body.tv_results?.[0]
+      return hit ? String(hit.id) : null
+    } catch (err) {
+      Logger.warn('Plex', `TMDB resolve failed: ${err instanceof Error ? err.message : err}`)
+      return null
+    }
+  },
+
+  // -- Labeled items ------------------------------------------------------------
   async getLabeledItems(req: LabelReq): Promise<PlexItem[]> {
     if (!_conn) return []
     const { baseUrl, token, libraries: allLibs } = _conn
@@ -144,23 +248,82 @@ export const PlexService = {
           `/library/sections/${lib.key}/all?type=${type}&label.tag.tag=${encodeURIComponent(req.label)}`,
         ) as { MediaContainer?: { Metadata?: unknown[] } }
         for (const m of data?.MediaContainer?.Metadata ?? []) {
-          items.push(mapMetadata(m, lib.title, lib.type as 'movie' | 'show'))
+          const item = mapMetadata(m, lib.title, lib.type as 'movie' | 'show')
+          // Build a full, token-bearing transcode URL so thumbs load in the UI
+          if (item.thumb) {
+            item.thumb = `${baseUrl.replace(/\/$/, '')}/photo/:/transcode?width=120&height=180&minSize=1&upscale=1&url=${encodeURIComponent(item.thumb)}&X-Plex-Token=${token}`
+          }
+          items.push(item)
         }
       } catch {
-        // label filter unsupported on this section version — skip
+        // label filter unsupported on this section version - skip
       }
     }
     return items
   },
 
-  // ── Upload poster ────────────────────────────────────────────────────────────
+  // -- Resolve the real target (show / season / episode) for a poster ----------
+  // Given the show's ratingKey plus optional season/episode hints, walk the
+  // Plex hierarchy to find the ratingKey the poster should actually apply to,
+  // and whether it's a poster or a background ("art", for backdrops).
+  async resolveTarget(
+    showKey: string,
+    season?: number | 'Cover' | 'Backdrop',
+    episode?: number,
+  ): Promise<{ key: string; kind: 'poster' | 'art' }> {
+    if (!_conn) return { key: showKey, kind: 'poster' }
+    const { baseUrl, token } = _conn
+
+    // Backdrop → the show's background art
+    if (season === 'Backdrop') return { key: showKey, kind: 'art' }
+
+    // Show-level cover / no season info → the show poster itself
+    if (season == null || season === 'Cover') return { key: showKey, kind: 'poster' }
+
+    // Numeric season → find the season child by its index
+    try {
+      const seasonData = await plexFetch(baseUrl, token, `/library/metadata/${showKey}/children`) as {
+        MediaContainer?: { Metadata?: Array<{ ratingKey: string; index?: number }> }
+      }
+      const seasons = seasonData?.MediaContainer?.Metadata ?? []
+      const seasonNode = seasons.find(s => s.index === season)
+      if (!seasonNode) {
+        Logger.warn('Plex', `Season ${season} not found under show ${showKey} - using show poster`)
+        return { key: showKey, kind: 'poster' }
+      }
+
+      // No episode → the season poster
+      if (episode == null) return { key: seasonNode.ratingKey, kind: 'poster' }
+
+      // Episode → find the episode child by its index
+      const epData = await plexFetch(baseUrl, token, `/library/metadata/${seasonNode.ratingKey}/children`) as {
+        MediaContainer?: { Metadata?: Array<{ ratingKey: string; index?: number }> }
+      }
+      const episodes = epData?.MediaContainer?.Metadata ?? []
+      const epNode = episodes.find(e => e.index === episode)
+      if (!epNode) {
+        Logger.warn('Plex', `S${season}E${episode} not found - using season poster`)
+        return { key: seasonNode.ratingKey, kind: 'poster' }
+      }
+      return { key: epNode.ratingKey, kind: 'poster' }
+    } catch (err) {
+      Logger.warn('Plex', `Target resolution failed for show ${showKey}: ${err instanceof Error ? err.message : err}`)
+      return { key: showKey, kind: 'poster' }
+    }
+  },
+
+  // -- Upload poster ------------------------------------------------------------
   async uploadPoster(req: UploadReq): Promise<UploadRes> {
     if (!_conn) return { success: false, error: 'Not connected to Plex' }
     const { baseUrl, token } = _conn
-    const { itemKey, imageUrl, source } = req
+    const { itemKey, imageUrl, source, season, episode } = req
     const labelTag = source === 'mediux' ? 'MediUX' : 'ThePosterDB'
 
     try {
+      // Resolve the real target (season/episode) before uploading
+      const target = await PlexService.resolveTarget(itemKey, season, episode)
+      const endpoint = target.kind === 'art' ? 'arts' : 'posters'
+
       // Download image from source URL
       const imgRes = await fetch(imageUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -169,30 +332,32 @@ export const PlexService = {
       const imgBuf = Buffer.from(await imgRes.arrayBuffer())
       const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
 
-      // Upload binary to Plex
-      await plexFetch(baseUrl, token, `/library/metadata/${itemKey}/posters`, {
+      // Upload binary to the resolved target (poster or background art)
+      await plexFetch(baseUrl, token, `/library/metadata/${target.key}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': contentType },
         body: imgBuf,
       })
 
-      // Tag item with source label
+      // Tag the show (itemKey) with the source label for later reset/stats
       await plexFetch(
         baseUrl, token,
         `/library/metadata/${itemKey}?label[].tag.tag=${encodeURIComponent(labelTag)}&label.locked=1`,
         { method: 'PUT' },
       )
 
-      Logger.success('Plex', `Poster uploaded — key ${itemKey} [${source}]`)
+      const where = target.key === itemKey
+        ? 'show' : `S${season ?? '?'}${episode != null ? `E${episode}` : ''}`
+      Logger.success('Plex', `${target.kind} uploaded → ${where} (key ${target.key}) [${source}]`)
       return { success: true }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      Logger.error('Plex', `Upload failed — key ${itemKey}: ${error}`)
+      Logger.error('Plex', `Upload failed - key ${itemKey}: ${error}`)
       return { success: false, error }
     }
   },
 
-  // ── Reset poster ─────────────────────────────────────────────────────────────
+  // -- Reset poster -------------------------------------------------------------
   async resetPoster(req: ResetReq): Promise<void> {
     if (!_conn) throw new Error('Not connected to Plex')
     const { baseUrl, token } = _conn
@@ -244,14 +409,14 @@ export const PlexService = {
           await PlexService.resetPoster({ itemKey: child.ratingKey, hierarchical: true })
         }
       } catch {
-        // no children or server error — skip
+        // no children or server error - skip
       }
     }
 
-    Logger.info('Plex', `Poster reset — key ${itemKey}`)
+    Logger.info('Plex', `Poster reset - key ${itemKey}`)
   },
 
-  // ── Stats ────────────────────────────────────────────────────────────────────
+  // -- Stats --------------------------------------------------------------------
   async getStats(): Promise<Record<string, number>> {
     const [mediuxItems, posterdbItems] = await Promise.all([
       PlexService.getLabeledItems({ label: 'MediUX' }),
@@ -267,11 +432,11 @@ export const PlexService = {
     }
   },
 
-  // ── Auto-reconnect from saved config ─────────────────────────────────────────
-  async tryRestoreFromConfig(): Promise<boolean> {
+  // -- Auto-reconnect from saved config -----------------------------------------
+  async tryRestoreFromConfig(): Promise<{ success: boolean; serverName?: string }> {
     const cfg = ConfigService.get()
-    if (!cfg.baseUrl || !cfg.token) return false
+    if (!cfg.baseUrl || !cfg.token) return { success: false }
     const result = await PlexService.connect({ baseUrl: cfg.baseUrl, token: cfg.token })
-    return result.success
+    return { success: result.success, serverName: result.serverName }
   },
 }

@@ -2,15 +2,16 @@ import { shell } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { ConfigService } from './config'
 import { Logger } from './logger'
+import { PlexService } from './plexService'
 import type { PlexAuthStatus } from '../ipc/types'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --- Constants ----------------------------------------------------------------
 
 const PLEX_TV = 'https://plex.tv'
 const POLL_INTERVAL_MS = 2000
 const POLL_MAX_ATTEMPTS = 150 // 5 minutes
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function clientHeaders(clientId: string): Record<string, string> {
   return {
@@ -23,7 +24,53 @@ function clientHeaders(clientId: string): Record<string, string> {
   }
 }
 
-// ─── Module state ─────────────────────────────────────────────────────────────
+// --- Server discovery ---------------------------------------------------------
+
+function isPlainIp(uri: string): boolean {
+  try {
+    const host = new URL(uri).hostname
+    return host === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(host)
+  } catch { return false }
+}
+
+async function discoverPrimaryServer(
+  token: string,
+  hdrs: Record<string, string>,
+): Promise<{ name: string; url: string } | null> {
+  try {
+    const res = await fetch(
+      `${PLEX_TV}/api/v2/resources?includeHttps=1&includeIPv6=1&includeRelay=1`,
+      { headers: { ...hdrs, 'X-Plex-Token': token } },
+    )
+    if (!res.ok) return null
+
+    const resources = await res.json() as Array<{
+      name: string
+      provides: string
+      owned: boolean
+      connections: Array<{ uri: string; local: boolean; relay: boolean; protocol: string }>
+    }>
+
+    const servers = resources.filter(r => r.provides?.includes('server') && r.owned)
+    if (!servers.length) return null
+
+    const conns = servers[0].connections
+    // Prefer: local plain-IP HTTP > local plain-IP HTTPS > local HTTP > local HTTPS > non-relay > any
+    const best =
+      conns.find(c => c.local && !c.relay && c.protocol === 'http'  && isPlainIp(c.uri)) ??
+      conns.find(c => c.local && !c.relay && c.protocol === 'https' && isPlainIp(c.uri)) ??
+      conns.find(c => c.local && !c.relay && c.protocol === 'http') ??
+      conns.find(c => c.local && !c.relay) ??
+      conns.find(c => !c.relay) ??
+      conns[0]
+
+    return best ? { name: servers[0].name, url: best.uri } : null
+  } catch {
+    return null
+  }
+}
+
+// --- Module state -------------------------------------------------------------
 
 let _pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -34,10 +81,10 @@ function stopPoll() {
   }
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
+// --- Service ------------------------------------------------------------------
 
 export const PlexAuthService = {
-  // ── Sign in via PIN flow ─────────────────────────────────────────────────────
+  // -- Sign in via PIN flow -----------------------------------------------------
   async signIn(
     _win: BrowserWindow,
     onStatus: (status: PlexAuthStatus) => void,
@@ -48,7 +95,9 @@ export const PlexAuthService = {
 
     onStatus({ status: 'waiting' })
 
-    // Step 1: Request a PIN from plex.tv
+    // Step 1: Request a PIN from plex.tv. Must be a STRONG pin - the
+    // app.plex.tv/auth redirect link only completes with strong codes (short
+    // 4-char codes are for manual plex.tv/link entry only).
     const pinRes = await fetch(`${PLEX_TV}/api/v2/pins`, {
       method: 'POST',
       headers: { ...hdrs, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -57,16 +106,23 @@ export const PlexAuthService = {
     if (!pinRes.ok) throw new Error(`PIN request failed: ${pinRes.status}`)
     const pin = await pinRes.json() as { id: number; code: string }
 
-    Logger.info('PlexAuth', `PIN flow started — code: ${pin.code}`)
-    onStatus({ status: 'waiting', pin: pin.code })
-
-    // Step 2: Open the Plex auth page in the user's browser
+    // Step 2: Build the Plex auth URL and try to open it. In a browserless
+    // environment (Docker/KasmVNC) openExternal fails - the renderer shows the
+    // URL so the user can open it on their own device. Polling works either way.
     const authUrl =
       `https://app.plex.tv/auth#?` +
       `clientID=${encodeURIComponent(clientId)}` +
       `&code=${encodeURIComponent(pin.code)}` +
       `&context[device][product]=${encodeURIComponent('Plex Poster Set Helper')}`
-    await shell.openExternal(authUrl)
+
+    Logger.info('PlexAuth', `PIN flow started - code: ${pin.code}`)
+    onStatus({ status: 'waiting', pin: pin.code, authUrl })
+
+    try {
+      await shell.openExternal(authUrl)
+    } catch (err) {
+      Logger.warn('PlexAuth', `Could not open a browser automatically - use the link shown in the app: ${err instanceof Error ? err.message : err}`)
+    }
 
     // Step 3: Poll plex.tv every 2s until the user authorises (or timeout)
     return new Promise<string>((resolve, reject) => {
@@ -92,19 +148,20 @@ export const PlexAuthService = {
             resolve(data.authToken)
           }
         } catch {
-          // transient network error — keep polling
+          // transient network error - keep polling
         }
       }, POLL_INTERVAL_MS)
     })
   },
 
-  // ── Finalise auth: save token + fetch account info ───────────────────────────
+  // -- Finalise auth: save token + fetch account info + auto-discover server ----
   async _finalise(
     token: string,
     clientId: string,
     hdrs: Record<string, string>,
     onStatus: (status: PlexAuthStatus) => void,
   ) {
+    // 1. Fetch user profile
     try {
       const userRes = await fetch(`${PLEX_TV}/api/v2/user`, {
         headers: { ...hdrs, 'X-Plex-Token': token },
@@ -128,17 +185,39 @@ export const PlexAuthService = {
       ConfigService.set({ token })
       Logger.success('PlexAuth', 'Authenticated (user info fetch failed)')
     }
-    onStatus({ status: 'authorized', token })
-    void clientId // suppress unused warning
+
+    // 2. Discover primary server and auto-connect
+    let serverName: string | undefined
+    try {
+      const discovered = await discoverPrimaryServer(token, hdrs)
+      if (discovered) {
+        Logger.info('PlexAuth', `Discovered server "${discovered.name}" at ${discovered.url}`)
+        const result = await PlexService.connect({ baseUrl: discovered.url, token })
+        if (result.success) {
+          serverName = result.serverName
+          ConfigService.set({ baseUrl: discovered.url, plexServerName: result.serverName ?? discovered.name })
+          Logger.success('PlexAuth', `Auto-connected to "${result.serverName}"`)
+        } else {
+          // Discovery found it but couldn't connect - save URL for user to retry
+          ConfigService.set({ baseUrl: discovered.url })
+          Logger.warn('PlexAuth', `Auto-connect failed: ${result.error}`)
+        }
+      }
+    } catch {
+      // Server discovery is best-effort - never block auth
+    }
+
+    onStatus({ status: 'authorized', token, serverName })
+    void clientId
   },
 
-  // ── Cancel an in-progress sign-in ────────────────────────────────────────────
+  // -- Cancel an in-progress sign-in --------------------------------------------
   cancel() {
     stopPoll()
     Logger.info('PlexAuth', 'Auth flow cancelled by user')
   },
 
-  // ── Disconnect ────────────────────────────────────────────────────────────────
+  // -- Disconnect ----------------------------------------------------------------
   async disconnect() {
     stopPoll()
     ConfigService.set({
@@ -150,7 +229,7 @@ export const PlexAuthService = {
     Logger.info('PlexAuth', 'Disconnected from Plex')
   },
 
-  // ── Current status (sync, from config) ───────────────────────────────────────
+  // -- Current status (sync, from config) ---------------------------------------
   getStatus(): PlexAuthStatus {
     const cfg = ConfigService.get()
     return cfg.token ? { status: 'authorized' } : { status: 'idle' }

@@ -12,6 +12,11 @@ files:
   - node_modules/**
   - package.json
 
+# playwright must be outside the asar so utilityProcess.fork() can run its CLI
+asarUnpack:
+  - "node_modules/playwright/**"
+  - "node_modules/playwright-core/**"
+
 extraMetadata:
   main: electron/dist/main.js
 

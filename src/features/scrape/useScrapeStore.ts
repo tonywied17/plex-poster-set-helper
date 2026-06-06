@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { PosterInfo } from '../../../electron/ipc/types'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 export type EntryStatus = 'idle' | 'scraping' | 'done' | 'error'
 export type UploadStatus = 'idle' | 'matching' | 'uploading' | 'done' | 'error' | 'no_match'
@@ -36,7 +36,7 @@ interface ScrapeStore {
   setRunning: (v: boolean) => void
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 const SUPPORTED = /theposterdb\.com|mediux\.pro/i
 
@@ -52,7 +52,7 @@ function isSupported(url: string): boolean {
   }
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+// --- Store --------------------------------------------------------------------
 
 export const useScrapeStore = create<ScrapeStore>((set, get) => ({
   entries: [],

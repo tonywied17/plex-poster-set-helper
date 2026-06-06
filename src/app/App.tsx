@@ -1,34 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import TitleBar from '../components/shell/TitleBar'
 import Sidebar from '../components/shell/Sidebar'
 import StatusBar from '../components/shell/StatusBar'
 import ParticleField from '../components/shell/ParticleField'
 import LogDrawer from '../features/logs/LogDrawer'
-import ScrapePage from '../features/scrape/ScrapePage'
-import BulkPage from '../features/bulk/BulkPage'
+import LibraryPage from '../features/library/LibraryPage'
+import ManualPage from '../features/manual/ManualPage'
 import SchedulerPage from '../features/scheduler/SchedulerPage'
 import MappingsPage from '../features/mappings/MappingsPage'
 import ResetPage from '../features/reset/ResetPage'
 import SettingsPage from '../features/settings/SettingsPage'
+import SetupScreen from '../features/setup/SetupScreen'
+import { AppContext } from './AppContext'
 
-export type NavTab = 'scrape' | 'bulk' | 'scheduler' | 'mappings' | 'reset' | 'settings'
+export type NavTab = 'library' | 'scheduler' | 'mappings' | 'manual' | 'reset' | 'settings'
 
-const NAV_ORDER: NavTab[] = ['scrape', 'bulk', 'scheduler', 'mappings', 'reset', 'settings']
+const NAV_ORDER: NavTab[] = ['library', 'scheduler', 'mappings', 'manual', 'reset', 'settings']
 
 const PAGE_MAP: Record<NavTab, React.ReactNode> = {
-  scrape:    <ScrapePage />,
-  bulk:      <BulkPage />,
+  library:   <LibraryPage />,
   scheduler: <SchedulerPage />,
   mappings:  <MappingsPage />,
+  manual:    <ManualPage />,
   reset:     <ResetPage />,
   settings:  <SettingsPage />,
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<NavTab>('scrape')
-  const [prevTab, setPrevTab] = useState<NavTab>('scrape')
+  const [activeTab, setActiveTab] = useState<NavTab>('library')
+  const [prevTab, setPrevTab] = useState<NavTab>('library')
   const [logOpen, setLogOpen] = useState(false)
+  const [plexConnected, setPlexConnected] = useState(false)
+  // null = still checking, false = setup needed, true = ready
+  const [browserReady, setBrowserReady] = useState<boolean | null>(null)
 
   const direction = NAV_ORDER.indexOf(activeTab) > NAV_ORDER.indexOf(prevTab) ? 1 : -1
 
@@ -37,7 +42,25 @@ export default function App() {
     setActiveTab(tab)
   }
 
+  useEffect(() => {
+    window.api.auth.getStatus().then(s => setPlexConnected(s.status === 'authorized'))
+    const unsub = window.api.auth.onStatusChange(s => setPlexConnected(s.status === 'authorized'))
+    return () => { unsub() }
+  }, [])
+
+  // Check browser on mount - SetupScreen handles install if needed
+  useEffect(() => {
+    window.api.browser.getStatus().then(s => setBrowserReady(s.installed))
+  }, [])
+
   return (
+    <AppContext.Provider value={{ navigate, plexConnected }}>
+    {/* Setup gate - shown on first launch until Chromium is installed */}
+    <AnimatePresence>
+      {browserReady === false && (
+        <SetupScreen onComplete={() => setBrowserReady(true)} />
+      )}
+    </AnimatePresence>
     <div
       style={{
         display: 'flex',
@@ -80,7 +103,8 @@ export default function App() {
 
       <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} />
 
-      <StatusBar activeTab={activeTab} />
+      <StatusBar />
     </div>
+    </AppContext.Provider>
   )
 }

@@ -5,15 +5,24 @@
   --color-bg-elevated:    #1a1e28;
   --color-bg-overlay:     rgba(33, 38, 51, 0.85);
 
-  /* Brand color — Plex gold */
+  /* Brand color - Plex gold */
   --color-brand:            #e5a00d;
-  /* Interactive controls — sliders, toggles, range tracks */
+  /* Interactive controls - sliders, toggles, range tracks */
   --color-accent-interactive:        #e5a00d;
   --color-accent-interactive-dim:    rgba(229, 160, 13, 0.18);
   --color-accent-interactive-glow:   rgba(229, 160, 13, 0.32);
   --shadow-glow-interactive: 0 0 14px rgba(229, 160, 13, 0.35);
 
-  /* Accent palette — warm off-white; luminance-based interactive states */
+  /* Plex-orange accent - primary actions, active states, selection */
+  --color-accent:            #e5a00d;
+  --color-accent-hover:      #f3b53a;
+  --color-accent-active:     #cc8f0b;
+  --color-accent-soft:       rgba(229, 160, 13, 0.13);
+  --color-accent-soft-hover: rgba(229, 160, 13, 0.20);
+  --color-accent-border:     rgba(229, 160, 13, 0.45);
+  --color-accent-contrast:   #1a1205;
+
+  /* Accent palette - warm off-white; luminance-based interactive states */
   --color-accent-primary:   #ede8df;
   --color-accent-secondary: #f5f0e8;
   --color-accent-dim:       #b8b0a4;

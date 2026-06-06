@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Images, List, ArrowLeftRight, RotateCcw, Settings, ScrollText, Pin, PinOff, CalendarClock
+  Wand2, ArrowLeftRight, RotateCcw, Settings, ScrollText, Pin, PinOff, CalendarClock, LibraryBig
 } from 'lucide-react'
 import type { NavTab } from '../../app/App'
 import styles from './Sidebar.module.css'
@@ -13,10 +13,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'scrape',    label: 'Poster Scrape',  icon: <Images size={18} /> },
-  { id: 'bulk',      label: 'Bulk Import',    icon: <List size={18} /> },
+  { id: 'library',   label: 'Library Browser', icon: <LibraryBig size={18} /> },
   { id: 'scheduler', label: 'Scheduler',      icon: <CalendarClock size={18} /> },
   { id: 'mappings',  label: 'Title Mappings', icon: <ArrowLeftRight size={18} /> },
+  { id: 'manual',    label: 'Manual Import',  icon: <Wand2 size={18} /> },
   { id: 'reset',     label: 'Reset Posters',  icon: <RotateCcw size={18} /> },
 ]
 
@@ -39,7 +39,7 @@ export default function Sidebar({ activeTab, onNavigate, onToggleLogs }: Props) 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Pin toggle — floats in top-right, only visible when expanded */}
+      {/* Pin toggle - floats in top-right, only visible when expanded */}
       <AnimatePresence>
         {expanded && (
           <motion.button

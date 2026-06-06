@@ -21,7 +21,7 @@
     opacity var(--duration-fast);
 }
 
-/* Shimmer layer — sweeps on hover for primary */
+/* Shimmer layer - sweeps on hover for primary */
 .btn::after {
   content: '';
   position: absolute;
@@ -46,7 +46,7 @@
 }
 
 .btn:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-accent-primary);
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 .btn:disabled {
@@ -55,7 +55,7 @@
   pointer-events: none;
 }
 
-/* ── Sizes ────────────────────────────────────────────────────────────────── */
+/* -- Sizes ------------------------------------------------------------------ */
 
 .sm {
   font-size: var(--text-xs);
@@ -75,30 +75,29 @@
   height: 42px;
 }
 
-/* ── Variants ─────────────────────────────────────────────────────────────── */
+/* -- Variants --------------------------------------------------------------- */
 
-/* Primary — glassy outlined accent */
+/* Primary - soft tinted orange (modern, low-opacity bg + accent border) */
 .primary {
-  background: rgba(237, 232, 223, 0.07);
-  color: var(--color-accent-primary);
-  border: 1px solid rgba(237, 232, 223, 0.16);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent-border);
+  font-weight: var(--font-semibold);
 }
 
 .primary:hover:not(:disabled) {
-  background: rgba(237, 232, 223, 0.12);
-  border-color: rgba(237, 232, 223, 0.28);
-  color: var(--color-accent-highlight);
-  box-shadow:
-    0 0 18px rgba(237, 232, 223, 0.07),
-    inset 0 1px 0 rgba(237, 232, 223, 0.06);
+  background: var(--color-accent-soft-hover);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 16px rgba(229, 160, 13, 0.14);
 }
 
 .primary:active:not(:disabled) {
-  background: rgba(237, 232, 223, 0.09);
-  border-color: rgba(237, 232, 223, 0.2);
+  background: var(--color-accent-soft);
 }
 
-/* Secondary — elevated surface with border */
+.primary .icon { opacity: 1; }
+
+/* Secondary - elevated surface with border */
 .secondary {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
@@ -111,7 +110,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Ghost — transparent, secondary text */
+/* Ghost - transparent, secondary text */
 .ghost {
   background: transparent;
   color: var(--color-text-secondary);
@@ -124,7 +123,7 @@
   color: var(--color-text-primary);
 }
 
-/* Destructive — subtle red tint */
+/* Destructive - subtle red tint */
 .destructive {
   background: rgba(248, 113, 113, 0.08);
   color: var(--color-accent-error);
@@ -137,7 +136,7 @@
   box-shadow: 0 0 16px rgba(248, 113, 113, 0.12);
 }
 
-/* ── Icon slot ────────────────────────────────────────────────────────────── */
+/* -- Icon slot -------------------------------------------------------------- */
 
 .icon {
   display: flex;

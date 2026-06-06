@@ -21,6 +21,13 @@ const DEFAULTS: AppConfig = {
   logAppend: true,
   clientIdentifier: '',
   logDrawerHeight: 300,
+  plexServerName: '',
+  scheduledJobs: [],
+  tmdbApiKey: '',
+  mediuxSubscriptions: [],
+  appliedSetIds: [],
+  appliedPosters: [],
+  trayNotice: true,
 }
 
 const store = new Store<Record<string, unknown>>({ name: 'app-config' })

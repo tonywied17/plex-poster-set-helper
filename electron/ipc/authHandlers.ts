@@ -29,9 +29,15 @@ export function registerAuthHandlers(ipcMain: IpcMain, win: BrowserWindow) {
     }
   })
 
-  ipcMain.handle('auth:plexStatus', () =>
-    PlexAuthService.getStatus()
-  )
+  ipcMain.handle('auth:plexStatus', async () => {
+    const status = PlexAuthService.getStatus()
+    if (status.status === 'authorized') {
+      const { ConfigService } = await import('../services/config')
+      const cfg = ConfigService.get()
+      return { ...status, serverName: cfg.plexServerName ?? '' }
+    }
+    return status
+  })
 
   ipcMain.handle('auth:disconnect', async () => {
     await PlexAuthService.disconnect()

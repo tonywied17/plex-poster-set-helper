@@ -39,3 +39,7 @@ Thumbs.db
 
 # electron-builder cache
 .cache/
+
+# Docker runtime data
+/config/
+docker/config/

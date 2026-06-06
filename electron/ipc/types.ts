@@ -35,9 +35,13 @@ export interface PlexItem {
 }
 
 export interface UploadReq {
-  itemKey: string
+  itemKey: string                              // resolved show/movie ratingKey
   imageUrl: string
   source: 'mediux' | 'posterdb'
+  // Routing hints - when present, the poster is applied to the matching
+  // season/episode under itemKey instead of the show itself.
+  season?: number | 'Cover' | 'Backdrop'
+  episode?: number
 }
 
 export interface UploadRes {
@@ -104,6 +108,29 @@ export interface AppConfig {
   plexAccountEmail?: string
   plexAccountThumb?: string
   logDrawerHeight: number
+  plexServerName?: string  // friendly name of the connected Plex server
+  scheduledJobs?: ScheduledJob[]
+  tmdbApiKey?: string      // optional - enables tvdb/imdb→tmdb resolution for legacy/HAMA libraries
+  mediuxSubscriptions?: string[]  // followed MediUX usernames
+  appliedSetIds?: string[]        // (legacy) set ids already applied
+  appliedPosters?: AppliedRecord[] // local history of applied poster sets (source of truth for Reset)
+  trayNotice?: boolean            // show the "minimized to tray" notification (default true)
+}
+
+// One applied poster-set, recorded locally so tracking/reset never depends on
+// fragile Plex label round-trips.
+export interface AppliedRecord {
+  itemKey: string
+  title: string
+  year?: number
+  type: 'movie' | 'show'
+  source: 'mediux' | 'posterdb'
+  libraryTitle?: string
+  thumb?: string
+  setId?: string
+  uploader?: string
+  posterUrls?: string[]           // exact poster image URLs applied (per-poster tracking)
+  appliedAt: string               // ISO timestamp
 }
 
 export interface LogEntry {
@@ -123,8 +150,103 @@ export interface UpdateInfo {
 export interface PlexAuthStatus {
   status: 'idle' | 'waiting' | 'authorized' | 'timeout' | 'error'
   pin?: string
+  authUrl?: string      // open this to sign in (shown when no browser can be opened, e.g. Docker)
   token?: string
   error?: string
+  serverName?: string   // set when auto-connect succeeds at auth time
+}
+
+export interface BrowserStatus {
+  installed: boolean
+  executablePath: string
+  browsersPath: string
+}
+
+export interface ScheduledJob {
+  id: string
+  name: string
+  urls: string[]
+  cronExpr: string
+  enabled: boolean
+  lastRun?: string
+  lastStatus?: 'success' | 'error' | 'running'
+  lastError?: string
+}
+
+// --- Library browser (AURA-style) ---------------------------------------------
+
+export interface LibrarySection {
+  key: string
+  title: string
+  type: 'movie' | 'show'
+}
+
+export interface LibraryItem {
+  key: string                 // Plex ratingKey
+  title: string
+  year?: number
+  type: 'movie' | 'show'
+  thumb?: string              // full, token-bearing transcode URL for the UI
+  tmdbId?: string
+  tvdbId?: string
+  imdbId?: string
+}
+
+export interface SectionItemsReq {
+  sectionKey: string
+  offset: number
+  limit: number
+  search?: string
+}
+
+export interface SectionItemsRes {
+  items: LibraryItem[]
+  total: number
+}
+
+// One MediUX set available for a given title, with its uploader.
+export interface MediuxSetSummary {
+  id: string
+  setName: string
+  uploader: string
+  uploaderAvatar?: string
+  posterCount: number
+  backdropCount: number
+  titleCardCount: number
+  previewUrl?: string         // representative poster thumbnail
+  posters: PosterInfo[]       // every file in the set, ready to apply
+}
+
+export interface BrowseSetsReq {
+  type: 'movie' | 'show'
+  tmdbId?: string
+  tvdbId?: string
+  imdbId?: string
+}
+
+// A set from a creator's page, with library-match info resolved.
+export interface MediuxUserSet extends MediuxSetSummary {
+  title: string            // parsed media title (for matching)
+  year?: number
+  dateUpdated?: string
+  matchedKey?: string      // Plex ratingKey if this title is in the library
+  matchedType?: 'movie' | 'show'
+}
+
+export interface UserSetsReq {
+  username: string
+}
+
+export interface UserSetsRes {
+  username: string
+  sets: MediuxUserSet[]
+  error?: string
+}
+
+export interface BrowseSetsRes {
+  sets: MediuxSetSummary[]
+  tmdbId?: string          // the resolved id (echoed back for the UI)
+  error?: string           // e.g. "no_tmdb" when the item can't be matched
 }
 
 export type IpcChannels = {
@@ -156,4 +278,18 @@ export type IpcChannels = {
   'log:stream': { event: LogEntry }
   'scrape:progress': { event: ScrapeProgress }
   'auth:statusChange': { event: PlexAuthStatus }
+  'scheduler:list':        { req: void; res: ScheduledJob[] }
+  'scheduler:save':        { req: ScheduledJob; res: ScheduledJob }
+  'scheduler:delete':      { req: string; res: void }
+  'scheduler:runNow':      { req: string; res: void }
+  'scheduler:setAutoStart':{ req: boolean; res: void }
+  'scheduler:getAutoStart':{ req: void; res: boolean }
+  'scheduler:onChange':    { event: ScheduledJob[] }
+  'browser:status':          { req: void; res: BrowserStatus }
+  'browser:install':         { req: void; res: void }
+  'browser:installProgress': { event: string }
+  'library:sections':        { req: void; res: LibrarySection[] }
+  'library:items':           { req: SectionItemsReq; res: SectionItemsRes }
+  'library:sets':            { req: BrowseSetsReq; res: BrowseSetsRes }
+  'library:userSets':        { req: UserSetsReq; res: UserSetsRes }
 }

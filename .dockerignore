@@ -1,0 +1,12 @@
+node_modules
+src/dist
+electron/dist
+dist
+release
+.git
+.docs
+.vscode
+*.log
+config
+docker/config
+**/.DS_Store

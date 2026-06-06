@@ -12,17 +12,17 @@
   height: 100%;
 }
 
-/* ── Page header ─────────────────────────────────────────────────────────── */
+/* -- Page header ----------------------------------------------------------- */
 
 .pageHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
+  flex-direction: column;
+  gap: 2px;
   flex-shrink: 0;
+  padding-bottom: var(--space-2);
 }
 
-/* ── Section list ────────────────────────────────────────────────────────── */
+/* -- Section list ---------------------------------------------------------- */
 
 .body {
   display: flex;
@@ -30,7 +30,7 @@
   gap: var(--space-3);
 }
 
-/* ── Section ─────────────────────────────────────────────────────────────── */
+/* -- Section --------------------------------------------------------------- */
 
 .section {
   background: var(--color-bg-surface);
@@ -125,7 +125,7 @@
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Field row ───────────────────────────────────────────────────────────── */
+/* -- Field row ------------------------------------------------------------- */
 
 .fieldRow {
   display: grid;
@@ -159,7 +159,7 @@
   gap: var(--space-2);
 }
 
-/* ── Text input ──────────────────────────────────────────────────────────── */
+/* -- Text input ------------------------------------------------------------ */
 
 .textInput {
   height: 32px;
@@ -199,7 +199,7 @@
   color: var(--color-accent-error);
 }
 
-/* ── Account card ────────────────────────────────────────────────────────── */
+/* -- Account card ---------------------------------------------------------- */
 
 .accountCard {
   display: flex;
@@ -247,7 +247,7 @@
   text-transform: uppercase;
 }
 
-/* ── Sign-in row ─────────────────────────────────────────────────────────── */
+/* -- Sign-in row ----------------------------------------------------------- */
 
 .signInRow {
   display: flex;
@@ -270,7 +270,7 @@
   font-style: italic;
 }
 
-/* ── Auth-first note ─────────────────────────────────────────────────────── */
+/* -- Auth-first note ------------------------------------------------------- */
 
 .authFirstNote {
   display: flex;
@@ -291,7 +291,7 @@
   opacity: 0.8;
 }
 
-/* ── Setup flow stepper ──────────────────────────────────────────────────── */
+/* -- Setup flow stepper ---------------------------------------------------- */
 
 .setupFlow {
   display: flex;
@@ -400,7 +400,96 @@
   background: rgba(229, 160, 13, 0.3);
 }
 
-/* ── Libraries ───────────────────────────────────────────────────────────── */
+/* -- Group divider --------------------------------------------------------- */
+
+.groupDivider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-1) 0;
+}
+
+.groupDividerLine {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border-subtle) 20%, var(--color-border-subtle) 80%, transparent);
+}
+
+.groupDividerLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  color: var(--color-text-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+}
+
+.groupDividerDot {
+  width: 3px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+}
+
+/* -- Server connected card ------------------------------------------------- */
+
+.serverCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  background: rgba(52, 211, 153, 0.04);
+  border: 1px solid rgba(52, 211, 153, 0.14);
+  border-radius: var(--radius-md);
+}
+
+.serverCardLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.serverDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-success);
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+  flex-shrink: 0;
+}
+
+.serverInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.serverName {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.serverUrl {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -- Libraries ------------------------------------------------------------- */
 
 .libsEmpty {
   display: flex;
@@ -433,7 +522,7 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-/* ── Checkbox group ──────────────────────────────────────────────────────── */
+/* -- Checkbox group -------------------------------------------------------- */
 
 .checkGroup {
   display: flex;
@@ -441,7 +530,7 @@
   flex-wrap: wrap;
 }
 
-/* ── Slider grid ─────────────────────────────────────────────────────────── */
+/* -- Slider grid ----------------------------------------------------------- */
 
 .sliderGrid {
   display: flex;
@@ -449,3 +538,206 @@
   gap: var(--space-4);
 }
 
+
+/* -- Browser engine section ----------------------------------------------- */
+
+.browserBadgeOk,
+.browserBadgeWarn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+}
+
+.browserBadgeOk {
+  color: var(--color-accent-success);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+
+.browserBadgeWarn {
+  color: var(--color-accent-warning);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.browserSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.browserPath {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.browserPathLabel {
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: var(--font-medium);
+}
+
+.browserPathValue {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  word-break: break-all;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-3);
+}
+
+.browserNotice {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.browserActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.installLog {
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+
+.installLogLine {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* -- MediUX asset-type options -------------------------------------------- */
+.filterOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.filterOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+
+.filterOption:hover { border-color: rgba(255, 255, 255, 0.12); }
+
+.filterOptionOn {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+}
+
+.filterOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filterOptionName {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.filterOptionDesc {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+/* -- Plex auth link panel (browserless / Docker sign-in) ------------------- */
+.authLinkBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-accent-border);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-md);
+}
+
+.authLinkHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.authLinkHint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.authLinkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.authLinkUrl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: var(--space-2);
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+}
+
+.authCopyBtn, .authOpenBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.authCopyBtn:hover, .authOpenBtn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+
+.authPin {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+.authPin b { color: var(--color-text-primary); }

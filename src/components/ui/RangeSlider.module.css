@@ -9,7 +9,7 @@
   pointer-events: none;
 }
 
-/* ── Value readout ────────────────────────────────────────────────────────── */
+/* -- Value readout ---------------------------------------------------------- */
 
 .readout {
   display: flex;
@@ -30,7 +30,7 @@
   color: var(--color-text-disabled);
 }
 
-/* ── Track ────────────────────────────────────────────────────────────────── */
+/* -- Track ------------------------------------------------------------------ */
 
 .trackWrap {
   position: relative;
@@ -71,7 +71,7 @@
   transition: box-shadow var(--duration-fast);
 }
 
-/* ── Native range inputs (invisible, drive interaction) ──────────────────── */
+/* -- Native range inputs (invisible, drive interaction) -------------------- */
 
 .input {
   position: absolute;
@@ -107,7 +107,7 @@
 
 /* Focus glow on visual thumb via sibling trick isn't possible, handled via wrapper hover */
 
-/* ── Ticks ────────────────────────────────────────────────────────────────── */
+/* -- Ticks ------------------------------------------------------------------ */
 
 .ticks {
   display: flex;

@@ -64,7 +64,7 @@ input, textarea, [data-selectable] {
   font-family: var(--font-mono);
 }
 
-/* ── Page-level typography helpers (used by all feature pages) ─────────── */
+/* -- Page-level typography helpers (used by all feature pages) ----------- */
 
 .page-title {
   font-size: var(--text-sm);

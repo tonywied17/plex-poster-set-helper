@@ -1,17 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Reorder, motion, AnimatePresence } from 'framer-motion'
 import {
   GripVertical, X, ChevronDown, ChevronUp,
-  Upload, CheckCircle2, AlertCircle, Loader2,
+  Upload, CheckCircle2, AlertCircle, Loader2, Maximize2, Library, Sparkles, BadgeCheck,
 } from 'lucide-react'
 import Badge from '../../../components/ui/Badge'
 import Spinner from '../../../components/ui/Spinner'
 import Button from '../../../components/ui/Button'
+import Lightbox, { type LightboxImage } from '../../../components/ui/Lightbox'
+import { groupPosters } from '../../../utils/posterGroups'
+import { recordApplied, appliedKey, loadAppliedIndex, type AppliedIndex } from '../../../utils/appliedTracker'
 import { useScrapeStore } from '../useScrapeStore'
 import type { QueueEntry, PosterResult } from '../useScrapeStore'
 import styles from './UrlQueueEntry.module.css'
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+// --- Props --------------------------------------------------------------------
 
 interface Props {
   entry: QueueEntry
@@ -19,7 +22,7 @@ interface Props {
   patchPoster: (entryId: string, posterUrl: string, patch: Partial<PosterResult>) => void
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function sourceFromUrl(url: string): 'posterdb' | 'mediux' | null {
   if (/theposterdb\.com/i.test(url)) return 'posterdb'
@@ -37,19 +40,20 @@ function shortUrl(url: string): string {
 }
 
 function posterLabel(p: PosterResult): string {
-  if (p.season === 'Backdrop') return `${p.title} — Backdrop`
-  if (p.season === 'Cover')    return `${p.title} — Cover`
+  if (p.season === 'Backdrop') return `${p.title} - Backdrop`
+  if (p.season === 'Cover')    return `${p.title} - Cover`
   if (typeof p.season === 'number') return `${p.title} S${p.season}`
   if (p.episode != null)       return `${p.title} E${p.episode}`
   return p.title + (p.year ? ` (${p.year})` : '')
 }
 
-// ─── Upload a single poster via Plex IPC ──────────────────────────────────────
+// --- Upload a single poster via Plex IPC --------------------------------------
 
 async function uploadPoster(
   entryId: string,
   poster: PosterResult,
   patchPoster: Props['patchPoster'],
+  setId?: string,
 ) {
   patchPoster(entryId, poster.url, { uploadStatus: 'matching' })
   try {
@@ -59,7 +63,23 @@ async function uploadPoster(
       return
     }
     patchPoster(entryId, poster.url, { uploadStatus: 'uploading' })
-    const res = await window.api.plex.uploadPoster(item.key, poster.url, poster.source)
+    const res = await window.api.plex.uploadPoster(item.key, poster.url, poster.source, poster.season, poster.episode)
+    if (res.success) {
+      // Track it so it appears in Reset Posters and the "in library" marker.
+      // Recording the setId keeps it interchangeable with the Library Browser.
+      void recordApplied({
+        itemKey: item.key,
+        title: item.title,
+        year: item.year,
+        type: item.type === 'movie' ? 'movie' : 'show',
+        source: poster.source,
+        libraryTitle: item.libraryTitle,
+        thumb: poster.thumbUrl ?? poster.url,
+        setId,
+        posterUrls: [poster.url],
+        appliedAt: new Date().toISOString(),
+      })
+    }
     patchPoster(entryId, poster.url, {
       uploadStatus: res.success ? 'done' : 'error',
       uploadError: res.success ? undefined : res.error,
@@ -72,16 +92,24 @@ async function uploadPoster(
   }
 }
 
-// ─── Poster thumbnail ─────────────────────────────────────────────────────────
+// --- Poster thumbnail ---------------------------------------------------------
 
 function PosterThumb({
   poster,
   entryId,
   patchPoster,
+  onView,
+  inLibrary,
+  applied,
+  setId,
 }: {
   poster: PosterResult
   entryId: string
   patchPoster: Props['patchPoster']
+  onView: () => void
+  inLibrary?: boolean
+  applied?: boolean
+  setId?: string
 }) {
   const [imgError, setImgError] = useState(false)
   const us = poster.uploadStatus
@@ -100,14 +128,12 @@ function PosterThumb({
     ''
 
   return (
-    <motion.div
+    <div
       className={styles.thumb}
       title={posterLabel(poster)}
-      whileHover={{ scale: 1.04 }}
-      transition={{ duration: 0.12 }}
       onClick={() => {
         if (us === 'idle' || us === 'error' || us === 'no_match') {
-          uploadPoster(entryId, poster, patchPoster)
+          uploadPoster(entryId, poster, patchPoster, setId)
         }
       }}
     >
@@ -141,20 +167,67 @@ function PosterThumb({
           <Upload size={12} />
         </div>
       )}
-    </motion.div>
+
+      {/* applied indicator — exact poster (strong) vs same-title (soft) */}
+      {applied ? (
+        <div className={styles.appliedBadge} title="This poster is already applied to your library">
+          <BadgeCheck size={11} /> Applied
+        </div>
+      ) : inLibrary ? (
+        <div className={styles.inLibBadge} title="You've already applied art to this title">
+          <Library size={10} />
+        </div>
+      ) : null}
+
+      {/* zoom to view the full image (doesn't trigger upload) */}
+      <button className={styles.zoomBtn} title="View full size" onClick={e => { e.stopPropagation(); onView() }}>
+        <Maximize2 size={11} />
+      </button>
+    </div>
   )
 }
 
-// ─── Main entry card ──────────────────────────────────────────────────────────
+// --- Main entry card ----------------------------------------------------------
 
 export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [lightbox, setLightbox] = useState<number | null>(null)
+  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set() })
   const removeEntry = useScrapeStore(s => s.removeEntry)
+
+  const doneCount = entry.posters.filter(p => p.uploadStatus === 'done').length
+
+  // MediUX set id for this entry (only for /sets/ links) — recorded on upload so
+  // the Library Browser recognises it, and used to flag a re-scraped applied set.
+  const entrySetId = entry.url.match(/\/sets\/(\d+)/)?.[1]
+  const setAlreadyApplied = !!entrySetId && appliedIdx.setIds.has(entrySetId)
+
+  // Reloads when expanded and whenever an upload completes so it stays live.
+  useEffect(() => {
+    if (!expanded) return
+    loadAppliedIndex().then(setAppliedIdx)
+  }, [expanded, doneCount])
+
+  // Grouped sections + a flat list (group order) for the lightbox
+  const groups = useMemo(() => groupPosters(entry.posters), [entry.posters])
+  const lightboxImages = useMemo<LightboxImage[]>(
+    () => groups.flatMap(g => g.posters.map(p => ({
+      url: p.url,
+      label: g.label,
+      caption: p.episode != null ? `Episode ${p.episode}` : (p.title || undefined),
+    }))),
+    [groups],
+  )
+  // A specific poster is "applied" if its exact image was uploaded before, or the
+  // whole set was applied. (setAlreadyApplied/title give a softer fallback.)
+  const isPosterApplied = (p: PosterResult) =>
+    appliedIdx.posterUrls.has(p.url) || setAlreadyApplied
+  const inLibrary = (p: PosterResult) =>
+    isPosterApplied(p) || appliedIdx.titles.has(appliedKey(p.title, p.year))
 
   const source = entry.posters[0]?.source ?? sourceFromUrl(entry.url) ?? 'posterdb'
 
   const posterCount = entry.posters.length
-  const doneCount   = entry.posters.filter(p => p.uploadStatus === 'done').length
   const errorCount  = entry.posters.filter(p =>
     p.uploadStatus === 'error' || p.uploadStatus === 'no_match'
   ).length
@@ -163,10 +236,21 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
   const hasErrors  = errorCount > 0
   const allDone    = posterCount > 0 && doneCount === posterCount
 
+  // Posters not yet applied (new title cards, changed art, etc.)
+  const unappliedCount = entry.posters.filter(p => p.uploadStatus !== 'done' && !isPosterApplied(p)).length
+
   async function uploadAll() {
     for (const p of entry.posters) {
       if (p.uploadStatus === 'idle' || p.uploadStatus === 'no_match' || p.uploadStatus === 'error') {
-        await uploadPoster(entry.id, p, patchPoster)
+        await uploadPoster(entry.id, p, patchPoster, entrySetId)
+      }
+    }
+  }
+
+  async function uploadUnapplied() {
+    for (const p of entry.posters) {
+      if (p.uploadStatus !== 'done' && !isPosterApplied(p)) {
+        await uploadPoster(entry.id, p, patchPoster, entrySetId)
       }
     }
   }
@@ -182,7 +266,7 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
       layout
     >
-      {/* ── Row ──────────────────────────────────────────────────────────── */}
+      {/* -- Row ------------------------------------------------------------ */}
       <div className={styles.row}>
 
         {/* drag handle */}
@@ -231,6 +315,19 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
 
         {/* actions */}
         <div className={styles.rowActions}>
+          {entry.status === 'done' && posterCount > 0 && !allDone && unappliedCount > 0 && unappliedCount < posterCount && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Sparkles size={12} />}
+              onClick={uploadUnapplied}
+              disabled={isRunning}
+              className={styles.uploadAllBtn}
+              title="Upload only posters not already in your library (new title cards, changed art, etc.)"
+            >
+              Upload New ({unappliedCount})
+            </Button>
+          )}
           {entry.status === 'done' && posterCount > 0 && !allDone && (
             <Button
               variant="ghost"
@@ -265,7 +362,7 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
         </div>
       </div>
 
-      {/* ── Poster grid (expanded) ────────────────────────────────────────── */}
+      {/* -- Poster grid (expanded) ------------------------------------------ */}
       <AnimatePresence initial={false}>
         {expanded && entry.posters.length > 0 && (
           <motion.div
@@ -276,17 +373,41 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: 'hidden' }}
           >
-            <div className={styles.posterGrid}>
-              {entry.posters.map(p => (
-                <PosterThumb
-                  key={p.url}
-                  poster={p}
-                  entryId={entry.id}
-                  patchPoster={patchPoster}
-                />
-              ))}
-            </div>
+            {(() => {
+              let flat = -1
+              return groups.map(g => (
+                <div key={g.label} className={styles.posterGroup}>
+                  <div className={styles.posterGroupLabel}>
+                    {g.label}<span className={styles.posterGroupCount}>{g.posters.length}</span>
+                  </div>
+                  <div className={`${styles.posterGrid} ${g.kind === 'title_card' || g.kind === 'backdrop' ? styles.posterGridWide : ''}`}>
+                    {g.posters.map(p => {
+                      flat++
+                      const idx = flat
+                      return (
+                        <PosterThumb
+                          key={p.url}
+                          poster={p}
+                          entryId={entry.id}
+                          patchPoster={patchPoster}
+                          onView={() => setLightbox(idx)}
+                          applied={isPosterApplied(p)}
+                          inLibrary={inLibrary(p) && !isPosterApplied(p)}
+                          setId={entrySetId}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            })()}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {lightbox !== null && (
+          <Lightbox images={lightboxImages} index={lightbox} onClose={() => setLightbox(null)} />
         )}
       </AnimatePresence>
     </Reorder.Item>

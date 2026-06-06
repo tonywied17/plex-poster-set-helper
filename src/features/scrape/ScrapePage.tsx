@@ -4,19 +4,22 @@ import { Link2, Play, Square, Trash2, ListPlus } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import EmptyState from '../../components/ui/EmptyState'
 import Spinner from '../../components/ui/Spinner'
+import PlexConnectBanner from '../../components/ui/PlexConnectBanner'
+import { useAppContext } from '../../app/AppContext'
 import { useScrapeStore } from './useScrapeStore'
 import UrlQueueEntry from './components/UrlQueueEntry'
 import type { QueueEntry, PosterResult } from './useScrapeStore'
 import type { PosterInfo, ScrapeProgress } from '../../../electron/ipc/types'
 import styles from './ScrapePage.module.css'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// --- Constants ----------------------------------------------------------------
 
 const MAX_WORKERS = 2
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function ScrapePage() {
+  const { plexConnected } = useAppContext()
   const { entries, isRunning, addUrls, setEntries, patchEntry, patchPoster, clearAll, setRunning } =
     useScrapeStore()
 
@@ -24,7 +27,7 @@ export default function ScrapePage() {
   const abortRef = useRef(false)
   const runningRef = useRef(false)
 
-  // ── Progress listener ──────────────────────────────────────────────────────
+  // -- Progress listener ------------------------------------------------------
 
   useEffect(() => {
     const off = window.api.scrape.onProgress((prog: ScrapeProgress) => {
@@ -38,7 +41,7 @@ export default function ScrapePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries])
 
-  // ── Queue runner ───────────────────────────────────────────────────────────
+  // -- Queue runner -----------------------------------------------------------
 
   const runQueue = useCallback(async () => {
     if (runningRef.current) return
@@ -53,7 +56,7 @@ export default function ScrapePage() {
       return
     }
 
-    // Simple concurrency pool — emit at most MAX_WORKERS concurrent invocations
+    // Simple concurrency pool - emit at most MAX_WORKERS concurrent invocations
     let cursor = 0
 
     async function runOne(entry: QueueEntry) {
@@ -101,7 +104,7 @@ export default function ScrapePage() {
     runningRef.current = false
   }, [setRunning])
 
-  // ── Input handling ─────────────────────────────────────────────────────────
+  // -- Input handling ---------------------------------------------------------
 
   function handleAdd() {
     const urls = inputValue
@@ -121,7 +124,7 @@ export default function ScrapePage() {
     }
   }
 
-  // ── Derived state ──────────────────────────────────────────────────────────
+  // -- Derived state ----------------------------------------------------------
 
   const idleCount    = entries.filter(e => e.status === 'idle').length
   const doneCount    = entries.filter(e => e.status === 'done').length
@@ -131,7 +134,9 @@ export default function ScrapePage() {
   return (
     <div className={styles.page}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {!plexConnected && <PlexConnectBanner />}
+
+      {/* -- Header ----------------------------------------------------------- */}
       <div className={styles.header}>
         <div>
           <h1 className="page-title">Poster Scrape</h1>
@@ -141,7 +146,7 @@ export default function ScrapePage() {
         </div>
       </div>
 
-      {/* ── URL Input ──────────────────────────────────────────────────────── */}
+      {/* -- URL Input -------------------------------------------------------- */}
       <div className={styles.inputSection}>
         <textarea
           className={styles.urlInput}
@@ -170,7 +175,7 @@ export default function ScrapePage() {
         </div>
       </div>
 
-      {/* ── Controls ───────────────────────────────────────────────────────── */}
+      {/* -- Controls --------------------------------------------------------- */}
       {entries.length > 0 && (
         <div className={styles.controls}>
           <div className={styles.controlsLeft}>
@@ -229,7 +234,7 @@ export default function ScrapePage() {
         </div>
       )}
 
-      {/* ── Queue ──────────────────────────────────────────────────────────── */}
+      {/* -- Queue ------------------------------------------------------------ */}
       <div className={styles.queue}>
         <AnimatePresence mode="popLayout">
           {entries.length === 0 ? (

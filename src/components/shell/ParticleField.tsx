@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import styles from './ParticleField.module.css'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface Orb {
   baseX: number    // 0–1 fraction of canvas width
@@ -28,24 +28,24 @@ interface Ember {
   phase: number
 }
 
-// ─── Orb definitions ─────────────────────────────────────────────────────────
+// --- Orb definitions ---------------------------------------------------------
 // Positions / sizes are fractions so they scale with any window size.
-// Alpha is intentionally very low — these are atmospheric, not decorative.
+// Alpha is intentionally very low - these are atmospheric, not decorative.
 
 const ORBS: Orb[] = [
-  // Large warm gold bloom — upper left
+  // Large warm gold bloom - upper left
   { baseX: -0.05, baseY: -0.15, radius: 0.55, r: 212, g: 170, b: 64,  alpha: 0.10, driftX: 0.07, driftY: 0.10, speed: 0.00018, phase: 0 },
-  // Mid deep amber — right edge
+  // Mid deep amber - right edge
   { baseX: 1.05,  baseY: 0.35,  radius: 0.38, r: 226, g: 150, b: 40,  alpha: 0.07, driftX: 0.06, driftY: 0.09, speed: 0.00014, phase: 1.8 },
-  // Large deep indigo — bottom, cold contrast anchor
+  // Large deep indigo - bottom, cold contrast anchor
   { baseX: 0.30,  baseY: 1.10,  radius: 0.62, r: 20,  g: 28,  b: 100, alpha: 0.22, driftX: 0.05, driftY: 0.06, speed: 0.00010, phase: 3.4 },
-  // Small warm gold core — mid-canvas
+  // Small warm gold core - mid-canvas
   { baseX: 0.52,  baseY: 0.28,  radius: 0.22, r: 212, g: 170, b: 64,  alpha: 0.06, driftX: 0.09, driftY: 0.11, speed: 0.00022, phase: 0.9 },
-  // Deep blue-black — upper right
+  // Deep blue-black - upper right
   { baseX: 0.88,  baseY: -0.08, radius: 0.34, r: 8,   g: 14,  b: 70,  alpha: 0.18, driftX: 0.06, driftY: 0.08, speed: 0.00013, phase: 2.6 },
 ]
 
-// ─── Ember helpers ────────────────────────────────────────────────────────────
+// --- Ember helpers ------------------------------------------------------------
 
 const EMBER_COUNT = 22
 
@@ -63,7 +63,7 @@ function spawnEmber(w: number, h: number, scatter: boolean): Ember {
   }
 }
 
-// ─── Radial gradient orb draw ─────────────────────────────────────────────────
+// --- Radial gradient orb draw -------------------------------------------------
 
 function drawOrb(
   ctx: CanvasRenderingContext2D,
@@ -82,7 +82,7 @@ function drawOrb(
   ctx.fill()
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function ParticleField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -112,7 +112,7 @@ export default function ParticleField() {
 
       ctx.clearRect(0, 0, w, h)
 
-      // ── Orbs ──
+      // -- Orbs --
       const maxDim = Math.max(w, h)
       for (const orb of ORBS) {
         const cx = orb.baseX * w + Math.sin(t * orb.speed + orb.phase) * orb.driftX * w
@@ -120,7 +120,7 @@ export default function ParticleField() {
         drawOrb(ctx, cx, cy, orb.radius * maxDim, orb.r, orb.g, orb.b, orb.alpha)
       }
 
-      // ── Embers ──
+      // -- Embers --
       ctx.save()
       for (const e of embers.current) {
         e.life += 1
@@ -133,7 +133,7 @@ export default function ParticleField() {
 
         const p = e.life / e.maxLife
         let opacity = p < 0.12 ? p / 0.12 : p > 0.75 ? (1 - p) / 0.25 : 1
-        opacity *= 0.32   // max opacity — subtle
+        opacity *= 0.32   // max opacity - subtle
 
         ctx.shadowBlur  = 4 + e.size * 3
         ctx.shadowColor = `hsla(${e.hue},100%,65%,${opacity * 0.7})`
@@ -144,7 +144,7 @@ export default function ParticleField() {
       }
       ctx.restore()
 
-      // ── Vignette ──
+      // -- Vignette --
       const vig = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, Math.max(w, h) * 0.75)
       vig.addColorStop(0, 'rgba(0,0,0,0)')
       vig.addColorStop(1, 'rgba(0,0,0,0.38)')

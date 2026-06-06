@@ -7,10 +7,12 @@ import {
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
+import PlexConnectBanner from '../../components/ui/PlexConnectBanner'
+import { useAppContext } from '../../app/AppContext'
 import type { PosterInfo } from '../../../electron/ipc/types'
 import styles from './BulkPage.module.css'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 type RunStatus = 'idle' | 'running' | 'done' | 'error'
 
@@ -22,13 +24,13 @@ interface RunResult {
   error?: string
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function displayName(filename: string) {
   return filename.replace(/\.txt$/, '')
 }
 
-// ─── Inline rename input ──────────────────────────────────────────────────────
+// --- Inline rename input ------------------------------------------------------
 
 function RenameInput({
   initial,
@@ -70,9 +72,10 @@ function RenameInput({
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// --- Main component -----------------------------------------------------------
 
 export default function BulkPage() {
+  const { plexConnected } = useAppContext()
   const [files, setFiles]           = useState<string[]>([])
   const [active, setActive]         = useState<string | null>(null)
   const [content, setContent]       = useState('')
@@ -87,7 +90,7 @@ export default function BulkPage() {
 
   const isDirty = content !== savedContent
 
-  // ── Load file list ─────────────────────────────────────────────────────────
+  // -- Load file list ---------------------------------------------------------
 
   const loadFiles = useCallback(async () => {
     const list = await window.api.bulk.listFiles() as string[]
@@ -96,7 +99,7 @@ export default function BulkPage() {
 
   useEffect(() => { loadFiles() }, [loadFiles])
 
-  // ── Select file ────────────────────────────────────────────────────────────
+  // -- Select file ------------------------------------------------------------
 
   async function selectFile(filename: string) {
     if (active === filename) return
@@ -109,7 +112,7 @@ export default function BulkPage() {
     setSaved(text)
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // -- Save -------------------------------------------------------------------
 
   async function save() {
     if (!active) return
@@ -118,7 +121,7 @@ export default function BulkPage() {
     setSaved(content)
   }
 
-  // ── New file ───────────────────────────────────────────────────────────────
+  // -- New file ---------------------------------------------------------------
 
   useEffect(() => {
     if (showNewInput) setTimeout(() => newInputRef.current?.focus(), 50)
@@ -135,12 +138,12 @@ export default function BulkPage() {
       setShowNew(false)
       await selectFile(filename)
     } catch (err) {
-      // file already exists — just select it
+      // file already exists - just select it
       await selectFile(filename)
     }
   }
 
-  // ── Rename ─────────────────────────────────────────────────────────────────
+  // -- Rename -----------------------------------------------------------------
 
   async function renameFile(oldName: string, newName: string) {
     const newFilename = newName.endsWith('.txt') ? newName : `${newName}.txt`
@@ -150,7 +153,7 @@ export default function BulkPage() {
     setRenaming(null)
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // -- Delete -----------------------------------------------------------------
 
   async function deleteFile(filename: string) {
     await window.api.bulk.deleteFile(filename)
@@ -162,7 +165,7 @@ export default function BulkPage() {
     }
   }
 
-  // ── Run ────────────────────────────────────────────────────────────────────
+  // -- Run --------------------------------------------------------------------
 
   const runFile = useCallback(async () => {
     if (!active || runStatus === 'running') return
@@ -187,10 +190,10 @@ export default function BulkPage() {
           try {
             const item = await window.api.plex.findItem(poster.title, poster.year)
             if (!item) continue
-            const res = await window.api.plex.uploadPoster(item.key, poster.url, poster.source) as { success: boolean; error?: string }
+            const res = await window.api.plex.uploadPoster(item.key, poster.url, poster.source, poster.season, poster.episode) as { success: boolean; error?: string }
             if (res.success) uploaded++
           } catch {
-            // per-poster errors are silent — just skip
+            // per-poster errors are silent - just skip
           }
         }
 
@@ -215,7 +218,7 @@ export default function BulkPage() {
     setRunStatus('done')
   }, [active, content, isDirty, runStatus])
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // --- Render ----------------------------------------------------------------
 
   const totalUploaded = results.reduce((n, r) => n + r.uploadedCount, 0)
   const errorCount    = results.filter(r => r.status === 'error').length
@@ -224,7 +227,7 @@ export default function BulkPage() {
   return (
     <div className={styles.page}>
 
-      {/* ── Left: file list ────────────────────────────────────────────────── */}
+      {/* -- Left: file list -------------------------------------------------- */}
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <span className="page-title">Bulk Import</span>
@@ -318,8 +321,9 @@ export default function BulkPage() {
         </div>
       </aside>
 
-      {/* ── Right: editor ──────────────────────────────────────────────────── */}
+      {/* -- Right: editor ---------------------------------------------------- */}
       <div className={styles.editor}>
+        {!plexConnected && <PlexConnectBanner />}
         {!active ? (
           <EmptyState
             icon={<FileText size={22} />}

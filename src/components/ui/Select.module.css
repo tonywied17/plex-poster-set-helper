@@ -22,7 +22,7 @@
 }
 
 .trigger:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.12); }
-.trigger.open { border-color: var(--color-accent-primary); }
+.trigger.open { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
 .trigger.hasError { border-color: var(--color-accent-error); }
 .trigger.disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -61,7 +61,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   color: var(--color-text-primary);
-  caret-color: var(--color-accent-primary);
+  caret-color: var(--color-accent);
 }
 
 .list { max-height: 220px; overflow-y: auto; padding: var(--space-1); }
@@ -86,10 +86,10 @@
 }
 
 .option:hover:not(:disabled) { background: rgba(255,255,255,0.05); color: var(--color-text-primary); }
-.option.selected { color: var(--color-accent-primary); }
+.option.selected { color: var(--color-accent); }
 .option.optionDisabled { opacity: 0.4; cursor: not-allowed; }
 
 .optionIcon { display: flex; align-items: center; flex-shrink: 0; }
 .optionText { display: flex; flex-direction: column; flex: 1; }
 .optionDesc { font-size: var(--text-xs); color: var(--color-text-muted); }
-.check { margin-left: auto; color: var(--color-accent-primary); flex-shrink: 0; }
+.check { margin-left: auto; color: var(--color-accent); flex-shrink: 0; }
