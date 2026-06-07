@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Typecheck & Build
+    name: Lint, Typecheck & Build
     runs-on: ubuntu-latest
 
     # The Electron binary isn't needed to typecheck/build, and its postinstall is
@@ -30,6 +30,9 @@ jobs:
       # resolves them cleanly. (The Docker build does the same for this reason.)
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck renderer
         run: npx tsc --noEmit

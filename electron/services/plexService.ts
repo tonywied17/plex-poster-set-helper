@@ -68,7 +68,6 @@ function extractGuids(
   }
 
   if (typeof m.guid === 'string') assign(m.guid)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const g of (m.Guid ?? []) as Array<{ id?: string }>) if (g.id) assign(g.id)
 
   return out

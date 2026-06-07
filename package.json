@@ -15,8 +15,8 @@
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
-    "lint": "eslint src electron --ext .ts,.tsx",
-    "lint:fix": "eslint src electron --ext .ts,.tsx --fix",
+    "lint": "eslint src electron",
+    "lint:fix": "eslint src electron --fix",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -47,6 +47,7 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query": "^5.101.0",
     "@types/node": "^25.9.1",
