@@ -84,7 +84,7 @@ function drawOrb(
 
 // --- Component ----------------------------------------------------------------
 
-export default function ParticleField() {
+export default function ParticleField({ animate = true }: { animate?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef   = useRef<number>(0)
   const frameRef  = useRef<number>(0)
@@ -102,6 +102,8 @@ export default function ParticleField() {
       embers.current = Array.from({ length: EMBER_COUNT }, () =>
         spawnEmber(canvas!.width, canvas!.height, true)
       )
+      // Static mode (e.g. Docker/VNC): paint a single frame on resize, no loop.
+      if (!animate) draw()
     }
 
     function draw() {
@@ -151,13 +153,18 @@ export default function ParticleField() {
       ctx.fillStyle = vig
       ctx.fillRect(0, 0, w, h)
 
-      animRef.current = requestAnimationFrame(draw)
+      // Keep looping only when animating; static mode renders a single frame.
+      if (animate) animRef.current = requestAnimationFrame(draw)
     }
 
     const ro = new ResizeObserver(resize)
     ro.observe(canvas)
     resize()
     draw()
+
+    if (!animate) {
+      return () => { cancelAnimationFrame(animRef.current); ro.disconnect() }
+    }
 
     const onVisibility = () => {
       if (document.hidden) cancelAnimationFrame(animRef.current)
@@ -170,7 +177,7 @@ export default function ParticleField() {
       ro.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [])
+  }, [animate])
 
   return <canvas ref={canvasRef} className={styles.canvas} />
 }

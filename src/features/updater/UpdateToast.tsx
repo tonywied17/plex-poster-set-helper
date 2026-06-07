@@ -19,7 +19,7 @@ export default function UpdateToast() {
     (status === 'available' && !dismissed) ||
     (!isDocker && (status === 'downloading' || status === 'ready'))
 
-  // Docker can't self-update — show "pull a new image" guidance instead of Download.
+  // Docker can't self-update - show "pull a new image" guidance instead of Download.
   if (isDocker) {
     return (
       <AnimatePresence>
@@ -34,7 +34,7 @@ export default function UpdateToast() {
             <div className={styles.icon}><Container size={16} /></div>
             <div className={styles.body}>
               <span className={styles.title}>New version{info?.version ? ` v${info.version}` : ''} available</span>
-              <span className={styles.sub}>You're running in Docker — pull the new image and recreate the container to update.</span>
+              <span className={styles.sub}>You're running in Docker - pull the new image and recreate the container to update.</span>
             </div>
             <div className={styles.actions}>
               <button className={styles.primary} onClick={() => window.api.app.openExternal(info?.releaseUrl || DOCKER_GUIDE)}>

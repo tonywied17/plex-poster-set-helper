@@ -45,11 +45,11 @@ function ApplicationSection() {
 
       <FieldRow label="Updates" hint={isDocker ? 'Docker is updated by pulling a new image' : 'Check GitHub for a newer release'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {/* Docker: can't self-update — link to the pull-and-recreate guide */}
+          {/* Docker: can't self-update - link to the pull-and-recreate guide */}
           {isDocker && status === 'available' && (
             <Button variant="primary" size="sm" icon={<ExternalLink size={13} />}
               onClick={() => window.api.app.openExternal(info?.releaseUrl || DOCKER_UPDATE_GUIDE)}>
-              v{info?.version} available — how to update
+              v{info?.version} available - how to update
             </Button>
           )}
           {/* Desktop: in-app download/install */}

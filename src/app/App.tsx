@@ -36,6 +36,8 @@ export default function App() {
   const [plexConnected, setPlexConnected] = useState(false)
   // null = still checking, false = setup needed, true = ready
   const [browserReady, setBrowserReady] = useState<boolean | null>(null)
+  // In Docker/VNC, skip the animated background to keep idle CPU low.
+  const [reduceMotion, setReduceMotion] = useState(false)
 
   const direction = NAV_ORDER.indexOf(activeTab) > NAV_ORDER.indexOf(prevTab) ? 1 : -1
 
@@ -53,6 +55,7 @@ export default function App() {
   // Check browser on mount - SetupScreen handles install if needed
   useEffect(() => {
     window.api.browser.getStatus().then(s => setBrowserReady(s.installed))
+    window.api.app.getEnv().then(e => setReduceMotion(e.container))
   }, [])
 
   return (
@@ -74,7 +77,7 @@ export default function App() {
         position: 'relative',
       }}
     >
-      <ParticleField />
+      <ParticleField animate={!reduceMotion} />
 
       <TitleBar />
 

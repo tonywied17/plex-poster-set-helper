@@ -21,8 +21,17 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY package*.json ./
 RUN npm install --no-audit --no-fund
 
-# Fetch the matching Electron binary into node_modules/electron/dist
+COPY . .
+RUN npm run build   # vite build (renderer → src/dist) + tsc (electron → electron/dist)
+
+# Drop dev dependencies for a leaner runtime copy.
+RUN npm prune --omit=dev
+
+# Electron is a devDependency (electron-builder requires that), but the container
+# RUNS electron at runtime — so reinstall just electron after the prune and bake
+# its Linux binary (the npm postinstall is skipped via ELECTRON_SKIP_BINARY_DOWNLOAD).
 RUN set -eux; \
+    npm install --no-save --no-audit --no-fund "electron@$(node -p "require('./package.json').devDependencies.electron")"; \
     EV="$(node -p "require('/build/node_modules/electron/package.json').version")"; \
     case "$(uname -m)" in x86_64) EA=x64;; aarch64|arm64) EA=arm64;; *) EA=x64;; esac; \
     curl -fsSL -o /tmp/electron.zip "https://github.com/electron/electron/releases/download/v${EV}/electron-v${EV}-linux-${EA}.zip"; \
@@ -31,12 +40,6 @@ RUN set -eux; \
     chmod +x node_modules/electron/dist/electron; \
     printf 'electron' > node_modules/electron/path.txt; \
     rm /tmp/electron.zip
-
-COPY . .
-RUN npm run build   # vite build (renderer → src/dist) + tsc (electron → electron/dist)
-
-# Drop dev dependencies for a leaner runtime copy
-RUN npm prune --omit=dev
 
 # ----- Runtime: KasmVNC desktop ------------------------------------------------
 FROM lscr.io/linuxserver/baseimage-kasmvnc:debianbookworm
