@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Search, X, Upload, Check, AlertCircle, Loader2, User, Image as ImageIcon, ChevronDown, ChevronUp, Plus, UserPlus, Trash2, CalendarClock, CheckCircle2, RefreshCw, Star, Library } from 'lucide-react'
+import { Search, X, Upload, Check, AlertCircle, Loader2, User, Image as ImageIcon, ChevronDown, ChevronUp, Plus, UserPlus, Trash2, CalendarClock, CheckCircle2, RefreshCw, Star, Library, Download } from 'lucide-react'
 import type { ScheduledJob } from '../../../electron/ipc/types'
 import Button from '../../components/ui/Button'
 import Select from '../../components/ui/Select'
@@ -280,7 +280,7 @@ function SetsPanel({ item, subs, onClose, onItemPoster }: {
   const [uploader, setUploader] = useState<string>('all')
   const [types, setTypes]       = useState<Set<FileType>>(new Set(ALL_TYPES))
   const [applyMap, setApplyMap] = useState<Record<string, ApplyState>>({})
-  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set() })
+  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set(), currentByItem: new Map(), currentPosterUrls: new Set() })
 
   const subSet = useMemo(() => new Set(subs), [subs])
   const itemApplied = appliedIdx.titles.has(appliedKey(item.title, item.year))
@@ -347,6 +347,8 @@ function SetsPanel({ item, subs, onClose, onItemPoster }: {
         setIds: new Set(prev.setIds).add(s.id),
         titles: new Set(prev.titles).add(appliedKey(item.title, item.year)),
         posterUrls: new Set([...prev.posterUrls, ...appliedUrls]),
+        currentByItem: new Map(prev.currentByItem).set(item.key, s.id),
+        currentPosterUrls: new Set([...prev.currentPosterUrls, ...appliedUrls]),
       }))
       // Optimistically update the library grid thumbnail to the applied main poster.
       const main = s.posters.find(p => p.season == null && p.episode == null)
@@ -424,13 +426,16 @@ function SetsPanel({ item, subs, onClose, onItemPoster }: {
         )}
 
         {visibleSets.map(s => {
-          // "Applied" = this exact set; otherwise, if the title already has custom
-          // art from another set/source, a lighter "Has art" marker.
-          const badge = appliedIdx.setIds.has(s.id)
+          // "Applied" = the set currently live on this item; "Downloaded" = a set
+          // applied before but since overwritten; "Has art" = title has art elsewhere.
+          const isCurrent = appliedIdx.currentByItem.get(item.key) === s.id
+          const badge = isCurrent
             ? <span className={styles.matchBadge}><CheckCircle2 size={11} /> Applied</span>
-            : itemApplied
-              ? <span className={styles.scheduledBadge}><Library size={11} /> Has art</span>
-              : undefined
+            : appliedIdx.setIds.has(s.id)
+              ? <span className={styles.downloadedBadge}><Download size={11} /> Downloaded</span>
+              : itemApplied
+                ? <span className={styles.scheduledBadge}><Library size={11} /> Has art</span>
+                : undefined
           return (
             <SetCard
               key={s.id}
@@ -615,7 +620,7 @@ function normalizeUsername(input: string): string {
 
 function CreatorsView({ initialCreator }: { initialCreator: string | null }) {
   const [subs, setSubs]       = useState<string[]>([])
-  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set() })
+  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set(), currentByItem: new Map(), currentPosterUrls: new Set() })
   const [active, setActive]   = useState<string | null>(null)
   const [adding, setAdding]   = useState('')
 
@@ -708,10 +713,12 @@ function CreatorsView({ initialCreator }: { initialCreator: string | null }) {
             appliedIdx={appliedIdx}
             onFollow={() => follow(active)}
             onUnfollow={() => removeCreator(active)}
-            onApplied={(setId, title, year, urls) => setAppliedIdx(prev => ({
+            onApplied={(setId, itemKey, title, year, urls) => setAppliedIdx(prev => ({
               setIds: new Set(prev.setIds).add(setId),
               titles: new Set(prev.titles).add(appliedKey(title, year)),
               posterUrls: new Set([...prev.posterUrls, ...urls]),
+              currentByItem: new Map(prev.currentByItem).set(itemKey, setId),
+              currentPosterUrls: new Set([...prev.currentPosterUrls, ...urls]),
             }))}
           />
         ) : (
@@ -734,7 +741,7 @@ function CreatorSets({ username, following, appliedIdx, onFollow, onUnfollow, on
   appliedIdx: AppliedIndex
   onFollow: () => void
   onUnfollow: () => void
-  onApplied: (setId: string, title: string, year: number | undefined, urls: string[]) => void
+  onApplied: (setId: string, itemKey: string, title: string, year: number | undefined, urls: string[]) => void
 }) {
   const { navigate } = useAppContext()
   const [sets, setSets]       = useState<MediuxUserSet[]>([])
@@ -808,7 +815,7 @@ function CreatorSets({ username, following, appliedIdx, onFollow, onUnfollow, on
         source: 'mediux', thumb: s.previewUrl, setId: s.id, uploader: s.uploader,
         posterUrls: appliedUrls, appliedAt: new Date().toISOString(),
       })
-      onApplied(s.id, s.title, s.year, appliedUrls)
+      onApplied(s.id, s.matchedKey, s.title, s.year, appliedUrls)
     }
     setApplyMap(m => ({
       ...m,
@@ -905,15 +912,18 @@ function CreatorSets({ username, following, appliedIdx, onFollow, onUnfollow, on
         )}
 
         {sortedSets.map(s => {
-          const exactApplied = appliedIdx.setIds.has(s.id)
+          const isCurrent    = !!s.matchedKey && appliedIdx.currentByItem.get(s.matchedKey) === s.id
+          const wasApplied   = appliedIdx.setIds.has(s.id)
           const titleApplied = appliedIdx.titles.has(appliedKey(s.title, s.year))
           const isScheduled  = creatorScheduled || scheduledSetIds.has(s.id)
           const matchBadge = s.matchedKey
-            ? exactApplied
+            ? isCurrent
               ? <span className={styles.matchBadge}><CheckCircle2 size={11} /> Applied</span>
-              : titleApplied
-                ? <span className={styles.scheduledBadge}><Library size={11} /> Has art</span>
-                : <span className={styles.matchBadge}><Check size={11} /> In library</span>
+              : wasApplied
+                ? <span className={styles.downloadedBadge}><Download size={11} /> Downloaded</span>
+                : titleApplied
+                  ? <span className={styles.scheduledBadge}><Library size={11} /> Has art</span>
+                  : <span className={styles.matchBadge}><Check size={11} /> In library</span>
             : <span className={styles.noMatchBadge}>Not in library</span>
           const badge = (
             <span className={styles.badgeRow}>

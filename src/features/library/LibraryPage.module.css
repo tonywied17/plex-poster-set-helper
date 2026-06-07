@@ -871,6 +871,20 @@
   color: var(--color-accent);
 }
 
+/* Previously applied but no longer the current poster on this item */
+.downloadedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
 .scheduleTip {
   display: flex;
   align-items: center;

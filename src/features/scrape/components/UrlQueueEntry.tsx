@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Reorder, motion, AnimatePresence } from 'framer-motion'
 import {
   GripVertical, X, ChevronDown, ChevronUp,
-  Upload, CheckCircle2, AlertCircle, Loader2, Maximize2, Library, Sparkles, BadgeCheck,
+  Upload, CheckCircle2, AlertCircle, Loader2, Maximize2, Library, Sparkles, BadgeCheck, Download,
 } from 'lucide-react'
 import Badge from '../../../components/ui/Badge'
 import Spinner from '../../../components/ui/Spinner'
@@ -101,6 +101,7 @@ function PosterThumb({
   onView,
   inLibrary,
   applied,
+  downloaded,
   setId,
 }: {
   poster: PosterResult
@@ -109,6 +110,7 @@ function PosterThumb({
   onView: () => void
   inLibrary?: boolean
   applied?: boolean
+  downloaded?: boolean
   setId?: string
 }) {
   const [imgError, setImgError] = useState(false)
@@ -168,10 +170,14 @@ function PosterThumb({
         </div>
       )}
 
-      {/* applied indicator - exact poster (strong) vs same-title (soft) */}
+      {/* status: current poster (Applied) > previously applied (Downloaded) > same-title (soft) */}
       {applied ? (
-        <div className={styles.appliedBadge} title="This poster is already applied to your library">
+        <div className={styles.appliedBadge} title="This poster is currently applied in your library">
           <BadgeCheck size={11} /> Applied
+        </div>
+      ) : downloaded ? (
+        <div className={styles.downloadedBadge} title="Uploaded before, but a newer poster is currently applied">
+          <Download size={10} /> Downloaded
         </div>
       ) : inLibrary ? (
         <div className={styles.inLibBadge} title="You've already applied art to this title">
@@ -192,15 +198,14 @@ function PosterThumb({
 export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [lightbox, setLightbox] = useState<number | null>(null)
-  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set() })
+  const [appliedIdx, setAppliedIdx] = useState<AppliedIndex>({ setIds: new Set(), titles: new Set(), posterUrls: new Set(), currentByItem: new Map(), currentPosterUrls: new Set() })
   const removeEntry = useScrapeStore(s => s.removeEntry)
 
   const doneCount = entry.posters.filter(p => p.uploadStatus === 'done').length
 
   // MediUX set id for this entry (only for /sets/ links) - recorded on upload so
-  // the Library Browser recognises it, and used to flag a re-scraped applied set.
+  // the Library Browser recognises it.
   const entrySetId = entry.url.match(/\/sets\/(\d+)/)?.[1]
-  const setAlreadyApplied = !!entrySetId && appliedIdx.setIds.has(entrySetId)
 
   // Reloads when expanded and whenever an upload completes so it stays live.
   useEffect(() => {
@@ -218,12 +223,11 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
     }))),
     [groups],
   )
-  // A specific poster is "applied" if its exact image was uploaded before, or the
-  // whole set was applied. (setAlreadyApplied/title give a softer fallback.)
-  const isPosterApplied = (p: PosterResult) =>
-    appliedIdx.posterUrls.has(p.url) || setAlreadyApplied
-  const inLibrary = (p: PosterResult) =>
-    isPosterApplied(p) || appliedIdx.titles.has(appliedKey(p.title, p.year))
+  // "Applied" = this exact poster is the one currently live in Plex.
+  // "Downloaded" = uploaded before but since overwritten by a newer poster.
+  const posterApplied    = (p: PosterResult) => appliedIdx.currentPosterUrls.has(p.url)
+  const posterDownloaded = (p: PosterResult) => !posterApplied(p) && appliedIdx.posterUrls.has(p.url)
+  const inLibraryTitle   = (p: PosterResult) => appliedIdx.titles.has(appliedKey(p.title, p.year))
 
   const source = entry.posters[0]?.source ?? sourceFromUrl(entry.url) ?? 'posterdb'
 
@@ -236,8 +240,8 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
   const hasErrors  = errorCount > 0
   const allDone    = posterCount > 0 && doneCount === posterCount
 
-  // Posters not yet applied (new title cards, changed art, etc.)
-  const unappliedCount = entry.posters.filter(p => p.uploadStatus !== 'done' && !isPosterApplied(p)).length
+  // Posters never applied yet (new title cards, changed art, etc.)
+  const unappliedCount = entry.posters.filter(p => p.uploadStatus !== 'done' && !appliedIdx.posterUrls.has(p.url)).length
 
   async function uploadAll() {
     for (const p of entry.posters) {
@@ -249,7 +253,7 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
 
   async function uploadUnapplied() {
     for (const p of entry.posters) {
-      if (p.uploadStatus !== 'done' && !isPosterApplied(p)) {
+      if (p.uploadStatus !== 'done' && !appliedIdx.posterUrls.has(p.url)) {
         await uploadPoster(entry.id, p, patchPoster, entrySetId)
       }
     }
@@ -391,8 +395,9 @@ export default function UrlQueueEntry({ entry, isRunning, patchPoster }: Props) 
                           entryId={entry.id}
                           patchPoster={patchPoster}
                           onView={() => setLightbox(idx)}
-                          applied={isPosterApplied(p)}
-                          inLibrary={inLibrary(p) && !isPosterApplied(p)}
+                          applied={posterApplied(p)}
+                          downloaded={posterDownloaded(p)}
+                          inLibrary={!posterApplied(p) && !posterDownloaded(p) && inLibraryTitle(p)}
                           setId={entrySetId}
                         />
                       )
