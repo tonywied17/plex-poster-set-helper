@@ -56,8 +56,10 @@ export function registerAppHandlers(_ipcMain: IpcMain) {
       try {
         const result = await autoUpdater.checkForUpdates()
         const info = result?.updateInfo
+        // `updateInfo` is ALWAYS the latest release — only an update if it's newer.
+        const available = !!info?.version && isNewer(info.version, app.getVersion())
         const notes = typeof info?.releaseNotes === 'string' ? info.releaseNotes : undefined
-        return { available: !!result?.updateInfo, version: info?.version, releaseNotes: notes, mode: 'desktop' as const }
+        return { available, version: info?.version, releaseNotes: notes, mode: 'desktop' as const }
       } catch {
         return { available: false, mode: 'desktop' as const }
       }
