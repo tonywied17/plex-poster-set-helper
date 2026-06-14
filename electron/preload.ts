@@ -27,8 +27,9 @@ const api = {
       ipcRenderer.invoke('plex:uploadPoster', { itemKey, imageUrl, source, season, episode }),
     getLabeledItems: (label: string) =>
       ipcRenderer.invoke('plex:getLabeledItems', { label }),
-    resetPoster: (itemKey: string, hierarchical?: boolean) =>
-      ipcRenderer.invoke('plex:resetPoster', { itemKey, hierarchical }),
+    resetPoster: (itemKey: string, hierarchical?: boolean, deleteUploads?: boolean) =>
+      ipcRenderer.invoke('plex:resetPoster', { itemKey, hierarchical, deleteUploads }),
+    cleanBundles: () => ipcRenderer.invoke('plex:cleanBundles'),
     getStats: () => ipcRenderer.invoke('plex:getStats'),
     getLibraryCount: (key: string, type: 'movie' | 'show') =>
       ipcRenderer.invoke('plex:getLibraryCount', key, type),

@@ -19,7 +19,7 @@ import { AppContext } from './AppContext'
 
 export type NavTab = 'library' | 'scheduler' | 'mappings' | 'manual' | 'reset' | 'settings'
 
-const NAV_ORDER: NavTab[] = ['library', 'scheduler', 'mappings', 'manual', 'reset', 'settings']
+const NAV_ORDER: NavTab[] = ['library', 'scheduler', 'manual', 'mappings', 'reset', 'settings']
 
 const IS_MAC = /mac/i.test(navigator.platform)
 

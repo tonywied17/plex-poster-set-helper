@@ -668,13 +668,153 @@
 .browserSection {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
+}
+
+/* Hero: mock-browser emblem + engine facts */
+.engineCard {
+  display: flex;
+  gap: var(--space-4);
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.engineEmblem {
+  position: relative;
+  width: 148px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration-base), box-shadow var(--duration-base), filter var(--duration-base);
+}
+
+/* Installed: warm it up with the Plex-gold edge + glow. */
+.engineEmblem[data-installed="true"] {
+  border-color: var(--color-accent-border);
+  box-shadow: 0 0 0 1px var(--color-accent-soft), 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.engineEmblem[data-installed="false"] { filter: saturate(0.35); }
+
+/* Fake chrome / tab bar with traffic lights + an address pill. */
+.emblemBar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.035);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.emblemDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+.emblemDot:nth-child(1) { background: #ff5f57; }
+.emblemDot:nth-child(2) { background: #febc2e; }
+.emblemDot:nth-child(3) { background: #28c840; }
+
+/* A quiet "live" pulse on the green light once the engine is ready. */
+.engineEmblem[data-installed="true"] .emblemDot:nth-child(3) {
+  animation: emblemPulse 2.6s var(--ease-in-out) infinite;
+}
+@keyframes emblemPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(40, 200, 64, 0.5); }
+  50%      { box-shadow: 0 0 0 4px rgba(40, 200, 64, 0); }
+}
+
+.emblemUrl {
+  margin-left: 3px;
+  flex: 1;
+  min-width: 0;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  background: var(--color-bg-base);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emblemViewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 66px;
+  color: var(--color-accent);
+  background: radial-gradient(130px 90px at 50% 28%, var(--color-accent-soft), transparent 72%);
+}
+.engineEmblem[data-installed="false"] .emblemViewport {
+  color: var(--color-text-muted);
+  background: none;
+}
+
+.engineInfo {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.engineNameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.engineName {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.engineChip {
+  font-size: var(--text-2xs);
+  font-weight: var(--font-semibold);
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+}
+
+.engineChipMuted {
+  font-size: var(--text-2xs);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.engineSub {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0;
 }
 
 .browserPath {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
 }
 
 .browserPathLabel {
@@ -685,27 +825,52 @@
   font-weight: var(--font-medium);
 }
 
-.browserPathValue {
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  color: var(--color-text-secondary);
-  word-break: break-all;
+/* Single-line path with an inline copy button. */
+.pathBox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 6px var(--space-3);
+  padding: 4px 4px 4px var(--space-3);
 }
 
-.browserNotice {
+.pathText {
+  flex: 1;
+  min-width: 0;
   font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pathCopy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
   color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
+  cursor: pointer;
+  transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
+}
+.pathCopy:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
 }
 
 .browserActions {
   display: flex;
   gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .installLog {

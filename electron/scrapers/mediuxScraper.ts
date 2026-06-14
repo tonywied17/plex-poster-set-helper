@@ -215,6 +215,53 @@ function parseTitleYear(raw?: string | null): { title: string; year?: number } |
 }
 
 /**
+ * Strips a trailing artwork-type suffix from a file title. Collection-set
+ * backdrops name their target movie in the title with a " - Backdrop" suffix
+ * (e.g. "300: Rise of an Empire (2014) - Backdrop"); removing it leaves the
+ * "Title (Year)" parseTitleYear expects.
+ *
+ * @param title - The file's title string.
+ * @returns The title without the suffix.
+ */
+function stripArtTypeSuffix(title?: string | null): string {
+  return (title ?? '').replace(/\s*-\s*Backdrop\s*$/i, '').trim()
+}
+
+/**
+ * Builds the lookup key for the collection-member id index: a movie's parsed
+ * title and year, normalised so a poster ("300 (2007)") and a backdrop
+ * ("300 (2007) - Backdrop") for the same movie collide.
+ *
+ * @param title - Parsed movie title.
+ * @param year - Parsed release year, when present.
+ * @returns The composite key.
+ */
+function memberKey(title: string, year?: number): string {
+  return `${title.toLowerCase().trim()}|${year ?? ''}`
+}
+
+/**
+ * Indexes a collection set's per-movie TMDB ids by "title|year". Only poster
+ * files carry a file.movie_id; their sibling backdrops/title cards for the same
+ * movie don't, so this lets those files recover the exact id (and match Plex by
+ * id like posters) from the poster that does carry it.
+ *
+ * @param set - The collection set.
+ * @returns Map of memberKey -> TMDB id, empty for non-collection sets.
+ */
+function memberIdIndex(set: MediuxSet): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!set.collection) return map
+  for (const f of set.files ?? []) {
+    const id = f.movie_id?.id
+    if (id == null) continue
+    const parsed = parseTitleYear(stripArtTypeSuffix(f.title))
+    if (parsed) map.set(memberKey(parsed.title, parsed.year), String(id))
+  }
+  return map
+}
+
+/**
  * Parses the season number from a title-card title like "Show (2026) - S1 E1".
  * Creator-page title cards lack structured episode_id refs, so the "S<n>" token
  * in the file title is the only season signal available.
@@ -290,9 +337,11 @@ function parseOgTitle(html: string): Fallback {
  * @param set - The owning set, for denormalised title/year data.
  * @param allowed - Enabled fileTypes; others are dropped.
  * @param fb - Title/year fallback when the set lacks denormalised info.
+ * @param memberIds - Per-movie TMDB ids for a collection set, so files without
+ *   their own movie_id (backdrops/title cards) can recover one by title/year.
  * @returns The poster, or null when filtered out or unusable.
  */
-function fileToInfo(file: MediuxFile, set: MediuxSet, allowed: Set<string>, fb: Fallback): PosterInfo | null {
+function fileToInfo(file: MediuxFile, set: MediuxSet, allowed: Set<string>, fb: Fallback, memberIds?: Map<string, string>): PosterInfo | null {
   const ft = (file.fileType ?? '').toLowerCase().replace(/[-\s]/g, '_')
   if (!allowed.has(ft)) return null
   if (!file.id) return null
@@ -301,11 +350,26 @@ function fileToInfo(file: MediuxFile, set: MediuxSet, allowed: Set<string>, fb: 
   const url = `${ASSET_BASE}/${file.id}`
   const thumbUrl = `${ASSET_BASE}/${file.id}?width=300&quality=80&format=webp`
 
-  // A poster inside a TMDB-collection set that targets one specific movie carries
-  // its "Title (Year)" in file.title and a file.movie_id, but no denormalised movie
-  // title. Parse the file title so it routes to that movie, not the collection.
-  const collectionMoviePoster = ft === 'poster' && !!file.movie_id && !!set.collection
-  const fileParsed = collectionMoviePoster ? parseTitleYear(file.title) : null
+  // Inside a TMDB-collection set a file targets either the collection itself or
+  // one specific movie. Posters carry a file.movie_id, but backdrops/title cards
+  // usually don't - their only per-movie signal is file.title
+  // ("300: Rise of an Empire (2014) - Backdrop"). Strip the artwork-type suffix
+  // and parse "Title (Year)" so every file routes to its movie. A file with a
+  // collection_id, or whose name carries no movie year, is the collection's own
+  // art and stays matched by collection name.
+  const parsedFileTitle = set.collection ? parseTitleYear(stripArtTypeSuffix(file.title)) : null
+  const isCollectionArt =
+    !!set.collection && !set.movie && !set.show &&
+    !file.movie_id && !file.show_id &&
+    (!!file.collection_id || parsedFileTitle == null || parsedFileTitle.year == null)
+  const collectionMember = !!set.collection && !isCollectionArt
+  const fileParsed = collectionMember ? parsedFileTitle : null
+
+  // A member backdrop/title card has no movie_id of its own; recover it from the
+  // sibling poster for the same movie so it matches Plex by id, not just title.
+  const recoveredId = collectionMember && !file.movie_id && fileParsed
+    ? memberIds?.get(memberKey(fileParsed.title, fileParsed.year))
+    : undefined
 
   const title =
     file.movie_id?.title ??
@@ -346,27 +410,22 @@ function fileToInfo(file: MediuxFile, set: MediuxSet, allowed: Set<string>, fb: 
     }
   }
 
-  // A "collection set" (e.g. "Toy Story Collection" inside a boxset) carries a
-  // set.collection but NO per-file movie/show ref - its posters apply to a Plex
-  // Collection object, matched by the collection name (= title), not a movie/show.
-  const isCollection =
-    !!set.collection && !set.movie && !set.show &&
-    !file.movie_id && !file.show_id
-
   // TMDB id of the movie/show this poster targets, so matching to Plex can prefer
   // an exact id (same as the Library Browser) instead of guessing by title/year.
   // Collection art has no single title, so it stays matched by collection name.
-  const tmdbId = isCollection
+  const tmdbId = isCollectionArt
     ? undefined
-    : file.movie_id?.id ?? file.show_id?.id ?? set.movie?.id ?? set.show?.id ?? undefined
+    : file.movie_id?.id ?? recoveredId ?? file.show_id?.id ?? set.movie?.id ?? set.show?.id ?? undefined
 
   return {
     title, url, thumbUrl, source: 'mediux', year, season, episode,
-    // A collection-set poster that targets one specific movie: flag it so the
+    // A collection-set file that targets one specific movie: flag it so the
     // apply path routes it to that movie (not just the viewed item).
-    ...(collectionMoviePoster ? { isCollectionMember: true } : {}),
+    ...(collectionMember ? { isCollectionMember: true } : {}),
     ...(tmdbId != null ? { tmdbId: String(tmdbId) } : {}),
-    ...(isCollection ? { isCollection: true } : {}),
+    // Collection art (e.g. "Toy Story Collection") applies to a Plex Collection
+    // object, matched by the collection name (= title), not a movie/show.
+    ...(isCollectionArt ? { isCollection: true } : {}),
   }
 }
 
@@ -391,8 +450,9 @@ function avatarUrl(uc?: UserCreated | null): string | undefined {
  * @returns Counts, preview, posters, uploader info, and detected media type.
  */
 function setToSummary(set: MediuxSet, allowed: Set<string>, fb: Fallback): MediuxSetSummary {
+  const memberIds = memberIdIndex(set)
   const posters = (set.files ?? [])
-    .map(f => fileToInfo(f, set, allowed, fb))
+    .map(f => fileToInfo(f, set, allowed, fb, memberIds))
     .filter((p): p is PosterInfo => p !== null)
 
   let posterCount = 0, backdropCount = 0, titleCardCount = 0
@@ -752,8 +812,9 @@ export class MediuxScraper extends BaseScraper {
       // Per-set title/year handles creator pages where each set is a different
       // title and the page-level og:title is absent
       const fb: Fallback = { ...fallback, ...deriveSetFallback(set) }
+      const memberIds = memberIdIndex(set)
       const found = (set.files ?? [])
-        .map(f => fileToInfo(f, set, allowed, fb))
+        .map(f => fileToInfo(f, set, allowed, fb, memberIds))
         .filter((p): p is PosterInfo => p !== null)
       const label = fb.title ?? set.name ?? `set ${set.id}`
       Logger.scrape('MediUX', `"${label}" → ${found.length} poster(s)`)

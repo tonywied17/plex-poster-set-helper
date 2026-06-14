@@ -85,6 +85,8 @@ export interface LabelReq {
 export interface ResetReq {
   itemKey: string
   hierarchical?: boolean
+  /** Also delete the uploaded poster/background image data from Plex (frees bundle space). */
+  deleteUploads?: boolean
 }
 
 export interface ScrapeReq {
@@ -360,6 +362,7 @@ export type IpcChannels = {
   'plex:uploadPoster': { req: UploadReq; res: UploadRes }
   'plex:getLabeledItems': { req: LabelReq; res: PlexItem[] }
   'plex:resetPoster': { req: ResetReq; res: void }
+  'plex:cleanBundles': { req: void; res: void }
   'plex:getStats': { req: void; res: Record<string, number> }
   'scrape:url': { req: ScrapeReq; res: PosterInfo[] }
   'scrape:cancel': { req: void; res: void }

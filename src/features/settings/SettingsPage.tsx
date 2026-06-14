@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LogIn, LogOut, RefreshCw, ServerCrash, Pencil, X,
   Server, User, Sliders, SlidersHorizontal, Filter, Wrench,
-  CheckCircle2, Circle, Globe, Download, RotateCcw, AlertTriangle, Film, Tv, Copy, ExternalLink,
+  CheckCircle2, Circle, AppWindow, Globe, Download, RotateCcw, AlertTriangle, Film, Tv, Copy, ExternalLink,
   Package, FolderOpen, Sparkles, MinusCircle, Trash2, BookOpen,
 } from 'lucide-react'
 import Button from '../../components/ui/Button'
@@ -30,6 +30,19 @@ function agentLabel(agent: string | undefined): string {
   if (agent.includes('thetvdb'))      return 'TheTVDB agent'
   if (agent.includes('plex'))         return 'Plex'
   return agent.split('.').pop() ?? ''
+}
+
+/**
+ * Pulls the Chromium build number out of a Playwright executable path, e.g.
+ * ...\chromium_headless_shell-1223\... -> "1223".
+ *
+ * @param p - Executable path.
+ * @returns The build number, or null when absent.
+ */
+function chromiumBuild(p?: string): string | null {
+  if (!p) return null
+  const m = p.match(/chromium\w*-(\d+)/i)
+  return m ? m[1] : null
 }
 
 /** Application section: version, update checks/installs, and log-folder access. */
@@ -218,6 +231,7 @@ export default function SettingsPage() {
   const [browserStatus,    setBrowserStatus]    = useState<BrowserStatus | null>(null)
   const [browserInstalling, setBrowserInstalling] = useState(false)
   const [installLog,       setInstallLog]       = useState<string[]>([])
+  const [copiedPath,       setCopiedPath]       = useState(false)
   const installLogRef = useRef<HTMLDivElement>(null)
 
   // cfg is the single source of truth - no draft layer
@@ -380,6 +394,15 @@ export default function SettingsPage() {
       ? current.filter(t => t !== title)
       : [...current, title]
     autosave('excludedLibraries', next)
+  }
+
+  async function copyPath() {
+    if (!browserStatus?.executablePath) return
+    try {
+      await navigator.clipboard.writeText(browserStatus.executablePath)
+      setCopiedPath(true)
+      setTimeout(() => setCopiedPath(false), 1800)
+    } catch { /* clipboard may be blocked */ }
   }
 
   async function installBrowser() {
@@ -776,7 +799,7 @@ export default function SettingsPage() {
 
         {/* Browser engine */}
         <Section
-          icon={<Globe size={15} />}
+          icon={<AppWindow size={15} />}
           title="Browser Engine"
           anchor="browser"
           description="Playwright Chromium is used for scraping poster sets from MediUX and ThePosterDB."
@@ -789,35 +812,76 @@ export default function SettingsPage() {
         >
           {browserStatus ? (
             <div className={styles.browserSection}>
-              {browserStatus.installed ? (
+              {/* Hero: a little mock browser window + the engine facts */}
+              <div className={styles.engineCard}>
+                <div className={styles.engineEmblem} data-installed={browserStatus.installed}>
+                  <div className={styles.emblemBar}>
+                    <span className={styles.emblemDot} />
+                    <span className={styles.emblemDot} />
+                    <span className={styles.emblemDot} />
+                    <span className={styles.emblemUrl}>
+                      {browserStatus.installed ? 'chromium://headless' : 'about:blank'}
+                    </span>
+                  </div>
+                  <div className={styles.emblemViewport}>
+                    <Globe size={28} strokeWidth={1.5} />
+                  </div>
+                </div>
+
+                <div className={styles.engineInfo}>
+                  <div className={styles.engineNameRow}>
+                    <span className={styles.engineName}>Chromium</span>
+                    {chromiumBuild(browserStatus.executablePath) && (
+                      <span className={styles.engineChip}>build {chromiumBuild(browserStatus.executablePath)}</span>
+                    )}
+                    {browserStatus.installed && (
+                      <span className={styles.engineChipMuted}>headless shell</span>
+                    )}
+                  </div>
+                  <p className={styles.engineSub}>
+                    {browserStatus.installed
+                      ? 'Bundled and ready — launched headlessly to render and scrape poster pages.'
+                      : 'Not installed yet. Install Chromium to enable scraping. Node.js must be on your system PATH.'}
+                  </p>
+                  <div className={styles.browserActions}>
+                    <Button
+                      variant={browserStatus.installed ? 'ghost' : 'primary'}
+                      size="sm"
+                      icon={browserInstalling
+                        ? <Spinner size="xs" color="current" />
+                        : browserStatus.installed ? <RotateCcw size={13} /> : <Download size={13} />}
+                      onClick={installBrowser}
+                      disabled={browserInstalling}
+                    >
+                      {browserInstalling
+                        ? 'Installing…'
+                        : browserStatus.installed ? 'Reinstall' : 'Install Chromium'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Executable path with copy-to-clipboard */}
+              {browserStatus.installed && (
                 <div className={styles.browserPath}>
                   <span className={styles.browserPathLabel}>Executable</span>
-                  <span className={styles.browserPathValue} title={browserStatus.executablePath}>
-                    {browserStatus.executablePath || '-'}
-                  </span>
+                  <div className={styles.pathBox}>
+                    <code className={styles.pathText} title={browserStatus.executablePath}>
+                      {browserStatus.executablePath || '-'}
+                    </code>
+                    {browserStatus.executablePath && (
+                      <button
+                        className={styles.pathCopy}
+                        onClick={copyPath}
+                        title="Copy path"
+                        aria-label="Copy executable path"
+                      >
+                        {copiedPath ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <p className={styles.browserNotice}>
-                  Chromium is not installed yet. Click Install to download it automatically.
-                  Node.js must be available on your system PATH.
-                </p>
               )}
-
-              <div className={styles.browserActions}>
-                <Button
-                  variant={browserStatus.installed ? 'ghost' : 'primary'}
-                  size="sm"
-                  icon={browserInstalling
-                    ? <Spinner size="xs" color="current" />
-                    : browserStatus.installed ? <RotateCcw size={13} /> : <Download size={13} />}
-                  onClick={installBrowser}
-                  disabled={browserInstalling}
-                >
-                  {browserInstalling
-                    ? 'Installing…'
-                    : browserStatus.installed ? 'Reinstall' : 'Install Chromium'}
-                </Button>
-              </div>
 
               <AnimatePresence>
                 {installLog.length > 0 && (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Plus, Trash2, Save, ArrowRight, Info, KeyRound } from 'lucide-react'
+import { Plus, Trash2, Save, ArrowRight, Info, KeyRound, CheckCircle2 } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import EmptyState from '../../components/ui/EmptyState'
 import { useAppContext } from '../../app/AppContext'
@@ -20,6 +20,7 @@ export default function MappingsPage() {
   const [rows, setRows]       = useState<MappingRow[]>([])
   const [saved, setSaved]     = useState<MappingRow[]>([])
   const [saving, setSaving]   = useState(false)
+  const [hasTmdbKey, setHasTmdbKey] = useState(false)
   const newPlexRef = useRef<HTMLInputElement>(null)
   const { navigate } = useAppContext()
   const goSettings = useNavStore(s => s.goSettings)
@@ -42,6 +43,7 @@ export default function MappingsPage() {
       }))
       setRows(existing)
       setSaved(existing)
+      setHasTmdbKey(!!cfg.tmdbApiKey?.trim())
     })
   }, [])
 
@@ -120,16 +122,28 @@ export default function MappingsPage() {
         </span>
       </div>
 
-      {/* TMDB tip - most mapping issues disappear once matching is ID-based */}
-      <div className={styles.tipBanner}>
-        <KeyRound size={13} />
-        <span>
-          Most mappings become unnecessary with a free <strong>TMDB API key</strong>: the app then
-          matches your library by ID instead of by title, so renamed and subtitled titles resolve
-          automatically.{' '}
-          <button className={styles.tipLink} onClick={openTmdbSettings}>Add a TMDB key in Settings</button>.
-        </span>
-      </div>
+      {/* TMDB tip - most mapping issues disappear once matching is ID-based. When a
+          key is already set, reassure that this whole section is usually unnecessary. */}
+      {hasTmdbKey ? (
+        <div className={styles.okBanner}>
+          <CheckCircle2 size={13} />
+          <span>
+            A <strong>TMDB API key</strong> is active, so your library is matched by ID — renamed and
+            subtitled titles resolve automatically. This section is most likely <strong>not needed</strong>,
+            but you can still add a mapping here as a fallback if a specific title refuses to match.
+          </span>
+        </div>
+      ) : (
+        <div className={styles.tipBanner}>
+          <KeyRound size={13} />
+          <span>
+            Most mappings become unnecessary with a free <strong>TMDB API key</strong>: the app then
+            matches your library by ID instead of by title, so renamed and subtitled titles resolve
+            automatically.{' '}
+            <button className={styles.tipLink} onClick={openTmdbSettings}>Add a TMDB key in Settings</button>.
+          </span>
+        </div>
+      )}
 
       {/* Table */}
       {rows.length === 0 ? (

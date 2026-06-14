@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   RotateCcw, RefreshCw, Film, Tv2, Layers, AlertTriangle,
-  CheckCircle2,
+  CheckCircle2, HardDrive, Trash2,
 } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
 import Spinner from '../../components/ui/Spinner'
+import Switch from '../../components/ui/Switch'
 import EmptyState from '../../components/ui/EmptyState'
 import Modal from '../../components/ui/Modal'
 import Lightbox, { type LightboxImage } from '../../components/ui/Lightbox'
@@ -47,6 +48,7 @@ function timeAgo(iso?: string): string {
 type SourceFilter = 'all' | 'mediux' | 'posterdb'
 type TypeFilter   = 'all' | 'movie' | 'show'
 type ItemStatus   = 'idle' | 'resetting' | 'done' | 'error'
+type CleanState   = 'idle' | 'cleaning' | 'done' | 'error'
 
 interface TrackedItem extends AppliedRecord {
   /** itemKey alias for existing markup. */
@@ -54,37 +56,64 @@ interface TrackedItem extends AppliedRecord {
   resetStatus: ItemStatus
 }
 
+interface Stats {
+  total: number
+  mediux: number
+  posterdb: number
+  movies: number
+  shows: number
+}
+
 
 /** Summary chips of applied-poster counts by source and type. */
-function StatStrip({ stats, total }: { stats: Record<string, number>; total: number }) {
+function StatStrip({ stats }: { stats: Stats }) {
   return (
     <div className={styles.statsStrip}>
       <span className={styles.stripStat}>
         <Layers size={13} className={styles.stripIcon} />
-        <strong>{total}</strong>
+        <strong>{stats.total}</strong>
         <span>tracked</span>
       </span>
       <span className={styles.stripDiv} />
       <span className={styles.stripStat}>
         <span className={`${styles.sourceChip} ${styles.sourceChipMx}`}>MX</span>
-        <strong>{stats.mediux ?? 0}</strong>
+        <strong>{stats.mediux}</strong>
       </span>
       <span className={styles.stripStat}>
         <span className={`${styles.sourceChip} ${styles.sourceChipPdb}`}>PDB</span>
-        <strong>{stats.posterdb ?? 0}</strong>
+        <strong>{stats.posterdb}</strong>
       </span>
       <span className={styles.stripDiv} />
       <span className={styles.stripStat}>
         <Film size={12} className={styles.stripIcon} />
-        <strong>{stats.movies ?? 0}</strong>
+        <strong>{stats.movies}</strong>
         <span>movies</span>
       </span>
       <span className={styles.stripStat}>
         <Tv2 size={12} className={styles.stripIcon} />
-        <strong>{stats.shows ?? 0}</strong>
+        <strong>{stats.shows}</strong>
         <span>shows</span>
       </span>
     </div>
+  )
+}
+
+
+/** Shimmer placeholder rows shown while the applied history loads. */
+function SkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className={styles.skelRow} style={{ animationDelay: `${i * 60}ms` }}>
+          <div className={`${styles.skel} ${styles.skelThumb}`} />
+          <div className={styles.skelInfo}>
+            <div className={`${styles.skel} ${styles.skelTitle}`} />
+            <div className={`${styles.skel} ${styles.skelMeta}`} />
+          </div>
+          <div className={`${styles.skel} ${styles.skelBtn}`} />
+        </div>
+      ))}
+    </>
   )
 }
 
@@ -94,13 +123,15 @@ export default function ResetPage() {
   const { plexConnected } = useAppContext()
   const [items, setItems]           = useState<TrackedItem[]>([])
   const [loading, setLoading]       = useState(false)
-  const [stats, setStats]           = useState<Record<string, number>>({})
   const [sourceFilter, setSource]   = useState<SourceFilter>('all')
   const [typeFilter, setType]       = useState<TypeFilter>('all')
   const [search, setSearch]         = useState('')
   const [confirmAll, setConfirmAll] = useState(false)
   const [resettingAll, setResettingAll] = useState(false)
-  const [lightbox, setLightbox] = useState<number | null>(null)
+  const [lightbox, setLightbox]     = useState<number | null>(null)
+  const [deleteUploads, setDeleteUploads] = useState(false)
+  const [cleanState, setCleanState] = useState<CleanState>('idle')
+  const cleanTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 
   const load = useCallback(async () => {
@@ -111,22 +142,14 @@ export default function ResetPage() {
       // One row per Plex item (latest record wins)
       const byItem = new Map<string, AppliedRecord>()
       for (const r of records) if (!byItem.has(r.itemKey)) byItem.set(r.itemKey, r)
-      const tracked: TrackedItem[] = [...byItem.values()].map(r => ({ ...r, key: r.itemKey, resetStatus: 'idle' as const }))
-      setItems(tracked)
-
-      setStats({
-        total:    tracked.length,
-        mediux:   tracked.filter(i => i.source === 'mediux').length,
-        posterdb: tracked.filter(i => i.source === 'posterdb').length,
-        movies:   tracked.filter(i => i.type === 'movie').length,
-        shows:    tracked.filter(i => i.type === 'show').length,
-      })
+      setItems([...byItem.values()].map(r => ({ ...r, key: r.itemKey, resetStatus: 'idle' as const })))
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => () => { if (cleanTimer.current) clearTimeout(cleanTimer.current) }, [])
 
   /** Removes an item from the local applied history. */
   async function forgetItem(key: string) {
@@ -139,11 +162,35 @@ export default function ResetPage() {
   async function resetOne(key: string) {
     setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'resetting' } : i))
     try {
-      await window.api.plex.resetPoster(key, true)
+      await window.api.plex.resetPoster(key, true, deleteUploads)
       await forgetItem(key)
+      // Flash the "Reset" confirmation, then drop the row so the list stays
+      // truthful without a manual refresh (AnimatePresence handles the exit).
       setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'done' } : i))
+      await new Promise(r => setTimeout(r, 480))
+      setItems(prev => prev.filter(i => i.key !== key))
     } catch {
       setItems(prev => prev.map(i => i.key === key ? { ...i, resetStatus: 'error' } : i))
+    }
+  }
+
+
+  /**
+   * Triggers Plex's Clean Bundles task. The IPC call resolves only once the task
+   * actually clears server-side, so the button tracks real progress and ends the
+   * moment it's done - no fixed cooldown.
+   */
+  async function cleanBundles() {
+    if (cleanState === 'cleaning') return
+    if (cleanTimer.current) clearTimeout(cleanTimer.current)
+    setCleanState('cleaning')
+    try {
+      await window.api.plex.cleanBundles()
+      setCleanState('done')
+      cleanTimer.current = setTimeout(() => setCleanState('idle'), 2_500)
+    } catch {
+      setCleanState('error')
+      cleanTimer.current = setTimeout(() => setCleanState('idle'), 4_000)
     }
   }
 
@@ -151,9 +198,9 @@ export default function ResetPage() {
   async function resetAll() {
     setConfirmAll(false)
     setResettingAll(true)
-    for (const item of filtered) {
-      if (item.resetStatus === 'done') continue
-      await resetOne(item.key)
+    // Snapshot keys up front - resetOne mutates `items` as rows drop out.
+    for (const key of filtered.map(i => i.key)) {
+      await resetOne(key)
     }
     setResettingAll(false)
   }
@@ -166,13 +213,26 @@ export default function ResetPage() {
     return true
   })
 
-  const doneCount = filtered.filter(i => i.resetStatus === 'done').length
+  const stats = useMemo<Stats>(() => ({
+    total:    items.length,
+    mediux:   items.filter(i => i.source === 'mediux').length,
+    posterdb: items.filter(i => i.source === 'posterdb').length,
+    movies:   items.filter(i => i.type === 'movie').length,
+    shows:    items.filter(i => i.type === 'show').length,
+  }), [items])
 
   const lightboxImages: LightboxImage[] = filtered.map(i => ({
     url: enlarge(i.thumb) ?? i.thumb ?? '',
     label: i.year ? `${i.title} (${i.year})` : i.title,
     caption: `${i.source === 'mediux' ? 'MediUX' : 'ThePosterDB'} · ${i.libraryTitle ?? ''}`.trim(),
   }))
+
+  const cleanBusy = cleanState === 'cleaning'
+  const cleanLabel =
+    cleanState === 'cleaning' ? 'Cleaning…'
+    : cleanState === 'done' ? 'Cleaned'
+    : cleanState === 'error' ? 'Failed'
+    : 'Clean Bundles'
 
 
   return (
@@ -202,9 +262,9 @@ export default function ResetPage() {
             <Button
               variant="destructive"
               size="sm"
-              icon={<RotateCcw size={13} />}
+              icon={deleteUploads ? <Trash2 size={13} /> : <RotateCcw size={13} />}
               onClick={() => setConfirmAll(true)}
-              disabled={resettingAll || filtered.every(i => i.resetStatus === 'done')}
+              disabled={resettingAll}
             >
               Reset All ({filtered.length})
             </Button>
@@ -213,8 +273,56 @@ export default function ResetPage() {
       </div>
 
       {/* Stats strip */}
-      {!loading && items.length > 0 && (
-        <StatStrip stats={stats} total={stats.total ?? items.length} />
+      {!loading && items.length > 0 && <StatStrip stats={stats} />}
+
+      {/* Space management: delete uploaded images + reclaim disk. Stays visible with
+          no tracked items so Clean Bundles is still reachable right after a Reset All. */}
+      {(items.length > 0 || plexConnected) && (
+        <div className={`${styles.spaceRow} ${deleteUploads && items.length > 0 ? styles.spaceRowArmed : ''}`}>
+          {items.length > 0 ? (
+            <Switch
+              checked={deleteUploads}
+              onChange={setDeleteUploads}
+              disabled={resettingAll}
+              label="Delete uploaded images"
+              description="On reset, also remove the poster & background files from your Plex server to free space"
+            />
+          ) : (
+            <div className={styles.spaceHint}>
+              <HardDrive size={15} className={styles.spaceHintIcon} />
+              <div className={styles.spaceHintText}>
+                <span className={styles.spaceHintTitle}>Reclaim disk space</span>
+                <span className={styles.spaceHintSub}>Clear unused poster &amp; art data left on your Plex server</span>
+              </div>
+            </div>
+          )}
+          <div className={styles.spaceActions}>
+            {cleanState === 'cleaning' && (
+              <span className={styles.spaceNote}>Reclaiming space…</span>
+            )}
+            {cleanState === 'done' && (
+              <span className={`${styles.spaceNote} ${styles.spaceNoteOk}`}>Space reclaimed</span>
+            )}
+            {cleanState === 'error' && (
+              <span className={`${styles.spaceNote} ${styles.spaceNoteErr}`}>Could not start the task</span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={
+                cleanState === 'error' ? <AlertTriangle size={13} />
+                : cleanState === 'done' ? <CheckCircle2 size={13} />
+                : cleanBusy ? <Spinner size="xs" color="current" />
+                : <HardDrive size={13} />
+              }
+              onClick={cleanBundles}
+              disabled={cleanBusy || !plexConnected}
+              title="Run Plex's Clean Bundles task to reclaim disk space from deleted images"
+            >
+              {cleanLabel}
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Filters */}
@@ -248,8 +356,10 @@ export default function ResetPage() {
               </button>
             ))}
           </div>
-          {doneCount > 0 && (
-            <span className={styles.doneCount}>{doneCount} reset</span>
+          {resettingAll && (
+            <span className={styles.workingTag}>
+              <Spinner size="xs" /> Resetting…
+            </span>
           )}
         </div>
       )}
@@ -257,10 +367,7 @@ export default function ResetPage() {
       {/* Item list */}
       <div className={styles.list}>
         {loading ? (
-          <div className={styles.loadingCenter}>
-            <Spinner size="md" />
-            <span className={styles.loadingText}>Loading labeled items…</span>
-          </div>
+          <SkeletonRows />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={<CheckCircle2 size={22} />}
@@ -276,11 +383,15 @@ export default function ResetPage() {
             {filtered.map(item => (
               <motion.div
                 key={item.key}
-                className={`${styles.itemRow} ${item.resetStatus === 'done' ? styles.itemDone : ''}`}
-                initial={{ opacity: 0, y: 4 }}
+                className={[
+                  styles.itemRow,
+                  item.source === 'mediux' ? styles.rowMediux : styles.rowPosterdb,
+                  item.resetStatus === 'done' ? styles.itemDone : '',
+                ].filter(Boolean).join(' ')}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                exit={{ opacity: 0, x: 24, scale: 0.97, transition: { duration: 0.22 } }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 layout
               >
                 {/* thumb - click to view full size */}
@@ -321,10 +432,14 @@ export default function ResetPage() {
 
                 {/* action */}
                 <div className={styles.itemAction}>
-                  {item.resetStatus === 'resetting' && <Spinner size="xs" />}
+                  {item.resetStatus === 'resetting' && (
+                    <span className={styles.workingLabel}>
+                      <Spinner size="xs" /> {deleteUploads ? 'Deleting…' : 'Resetting…'}
+                    </span>
+                  )}
                   {item.resetStatus === 'done' && (
                     <span className={styles.doneLabel}>
-                      <CheckCircle2 size={13} /> Reset
+                      <CheckCircle2 size={13} /> {deleteUploads ? 'Cleared' : 'Reset'}
                     </span>
                   )}
                   {item.resetStatus === 'error' && (
@@ -336,10 +451,15 @@ export default function ResetPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      icon={<RotateCcw size={12} />}
+                      className={deleteUploads ? styles.dangerAction : undefined}
+                      icon={deleteUploads ? <Trash2 size={12} /> : <RotateCcw size={12} />}
                       onClick={() => resetOne(item.key)}
+                      disabled={resettingAll}
+                      title={deleteUploads
+                        ? 'Reset to original art and delete the uploaded images from Plex'
+                        : 'Reset to original Plex art'}
                     >
-                      Reset
+                      {item.resetStatus === 'error' ? 'Retry' : 'Reset'}
                     </Button>
                   )}
                 </div>
@@ -353,17 +473,25 @@ export default function ResetPage() {
       <Modal
         open={confirmAll}
         onClose={() => setConfirmAll(false)}
-        title="Reset All Posters?"
+        title={deleteUploads ? 'Reset & Delete All?' : 'Reset All Posters?'}
         size="sm"
       >
         <p className={styles.confirmText}>
           This will reset <strong>{filtered.length} item{filtered.length !== 1 ? 's' : ''}</strong> to
           their original Plex artwork and remove MediUX / ThePosterDB labels. This cannot be undone.
+          {deleteUploads && (
+            <> Uploaded poster and background images will also be <strong>deleted from your Plex server</strong>.</>
+          )}
         </p>
         <div className={styles.confirmActions}>
           <Button variant="ghost" size="sm" onClick={() => setConfirmAll(false)}>Cancel</Button>
-          <Button variant="destructive" size="sm" icon={<RotateCcw size={13} />} onClick={resetAll}>
-            Reset All
+          <Button
+            variant="destructive"
+            size="sm"
+            icon={deleteUploads ? <Trash2 size={13} /> : <RotateCcw size={13} />}
+            onClick={resetAll}
+          >
+            {deleteUploads ? 'Reset & Delete' : 'Reset All'}
           </Button>
         </div>
       </Modal>

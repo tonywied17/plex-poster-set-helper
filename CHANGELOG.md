@@ -4,6 +4,31 @@ Release notes for Plex Poster Set Helper 2. The Build & Release workflow reads t
 section whose heading matches the pushed tag and uses it as the GitHub release body,
 so keep each version under its own `## What's new in vX.Y.Z` heading.
 
+## What's new in v2.1.0
+
+### Reset Posters: free up space on your Plex server
+The Reset Posters page can now delete the custom poster and background images this tool uploaded, not just switch the artwork back. Turn on **Delete uploaded images** and a reset also removes those uploaded files from your Plex server, then hit the new **Clean Bundles** button to reclaim the disk space right away instead of waiting on Plex's weekly maintenance.
+- Clean Bundles tracks the real task and finishes exactly when Plex does, with no fixed wait.
+- It stays available even after you've cleared every tracked poster.
+
+### Reset Posters redesign
+- Items now drop off the list on their own once reset, so there's no more hitting Refresh to see what's left.
+- Source-colored rows (MediUX / ThePosterDB), larger poster thumbnails, and loading skeletons.
+- With delete armed, the page and each row's button clearly warn before anything is removed.
+
+### Sharper collection-set matching (MediUX)
+Backdrops and title cards inside a MediUX collection set now route to the exact movie they belong to and match your library by **TMDB id**, recovering that id from the set's poster for the same movie. Fewer collection backdrops landing on the wrong item or going missing.
+
+### Redesigned Browser Engine settings
+The Chromium engine card got a fresh look: a little browser-window emblem with a live status light, the detected Chromium **build number**, and one-click **copy** for the executable path.
+
+### Clearer Title Mappings guidance
+When a TMDB API key is set, the Title Mappings page now confirms in green that the section is usually unnecessary (your library matches by id) while still letting you add a mapping as a fallback for the rare title that won't match on its own.
+
+### Polish
+- Reordered the dock so **Manual Import** sits before **Title Mappings**.
+- Small layout fixes on the Library and Scheduler pages.
+
 ## What's new in v2.0.24
 
 ### Smarter matching for manual scrapes and bulk lists

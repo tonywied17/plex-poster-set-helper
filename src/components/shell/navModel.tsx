@@ -14,8 +14,8 @@ export interface NavEntry {
 export const NAV_ENTRIES: NavEntry[] = [
   { id: 'library',   label: 'Library Browser', Icon: LibraryBig,    hint: 'Browse Plex libraries and poster sets' },
   { id: 'scheduler', label: 'Scheduler',       Icon: CalendarClock, hint: 'Automated poster jobs and run history' },
-  { id: 'mappings',  label: 'Title Mappings',  Icon: ArrowLeftRight, hint: 'Map source titles to Plex titles' },
   { id: 'manual',    label: 'Manual Import',   Icon: Wand2,         hint: 'Scrape URLs or run bulk files' },
+  { id: 'mappings',  label: 'Title Mappings',  Icon: ArrowLeftRight, hint: 'Map source titles to Plex titles' },
   { id: 'reset',     label: 'Reset Posters',   Icon: RotateCcw,     hint: 'Restore original Plex artwork' },
   { id: 'settings',  label: 'Settings',        Icon: Settings,      hint: 'Plex connection and preferences' },
 ]

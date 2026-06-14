@@ -5,9 +5,7 @@
   flex-direction: column;
   gap: var(--space-5);
   height: 100%;
-  padding: var(--content-padding);
-  padding-bottom: var(--dock-clearance);
-  overflow-y: auto;
+  min-height: 0;
 }
 
 /* --- Header ---------------------------------------------------------------- */
@@ -72,10 +70,21 @@
 /* --- Job list -------------------------------------------------------------- */
 
 .list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: var(--space-3);
   align-content: start;
+  /* Bleed into the page wrapper's right/bottom padding so the scrollbar sits
+     flush to the window edge and cards scroll all the way down behind the dock
+     (dock-clearance keeps the last row clear of it). Matches the Library
+     Browser's grid scroller. */
+  margin-right: calc(-1 * var(--content-padding));
+  padding-right: var(--space-3);
+  margin-bottom: calc(-1 * var(--content-padding));
+  padding-bottom: var(--dock-clearance);
 }
 
 /* --- Job card -------------------------------------------------------------- */

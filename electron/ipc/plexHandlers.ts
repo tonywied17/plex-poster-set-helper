@@ -43,6 +43,10 @@ export function registerPlexHandlers(ipcMain: IpcMain) {
     await PlexService.resetPoster(req)
   })
 
+  ipcMain.handle('plex:cleanBundles', () =>
+    PlexService.cleanBundles()
+  )
+
   ipcMain.handle('plex:getStats', () =>
     PlexService.getStats()
   )

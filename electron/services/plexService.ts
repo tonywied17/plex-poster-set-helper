@@ -145,6 +145,86 @@ function broadenTitle(title: string): string | null {
   return null
 }
 
+/**
+ * Deletes an item's currently-selected image when it's a user upload, freeing the
+ * bundle data Plex stored for it. Plex only supports deleting the active thumb/art
+ * (DELETE /thumb or /art), so this must run while the uploaded image is still the
+ * selected one - i.e. before any original poster is re-selected.
+ *
+ * @param baseUrl - Server base URL.
+ * @param token - Plex auth token.
+ * @param itemKey - Item ratingKey.
+ * @param kind - 'poster' (thumb) or 'art' (background).
+ * @returns true when an uploaded image was deleted.
+ */
+async function deleteUploadedImage(
+  baseUrl: string,
+  token: string,
+  itemKey: string,
+  kind: 'poster' | 'art',
+): Promise<boolean> {
+  const listPath = kind === 'art' ? 'arts' : 'posters'
+  const delPath  = kind === 'art' ? 'art'  : 'thumb'
+  try {
+    const data = await plexFetch(baseUrl, token, `/library/metadata/${itemKey}/${listPath}`) as {
+      MediaContainer?: { Metadata?: Array<{ ratingKey?: string; provider?: string; selected?: boolean }> }
+    }
+    const selected = (data?.MediaContainer?.Metadata ?? []).find(p => p.selected)
+    // Only delete our own uploads: Plex tags those with an upload:// ratingKey
+    // (or a 'custom' provider). Never delete an agent-selected poster.
+    const isUpload = !!selected && (
+      (selected.ratingKey ?? '').startsWith('upload://') || selected.provider === 'custom'
+    )
+    if (!isUpload) return false
+
+    await plexFetch(baseUrl, token, `/library/metadata/${itemKey}/${delPath}`, { method: 'DELETE' })
+    return true
+  } catch (err) {
+    Logger.warn('Plex', `Delete uploaded ${kind} failed - key ${itemKey}: ${err instanceof Error ? err.message : err}`)
+    return false
+  }
+}
+
+/**
+ * Polls Plex's /activities feed for a background task matching `match`, resolving
+ * once it has appeared and then cleared. Lets callers track real task completion
+ * instead of guessing with a fixed timer. Tolerant of tasks that finish too fast
+ * to ever surface (resolves after a short grace window) and bounded by a hard cap
+ * so it can never hang.
+ *
+ * @param baseUrl - Server base URL.
+ * @param token - Plex auth token.
+ * @param match - Tested against each activity's "type title subtitle".
+ * @param opts - Poll interval, grace window before assuming a no-show finished, and max wait (ms).
+ */
+async function waitForActivity(
+  baseUrl: string,
+  token: string,
+  match: RegExp,
+  { pollMs = 1000, graceMs = 4000, maxMs = 180_000 }: { pollMs?: number; graceMs?: number; maxMs?: number } = {},
+): Promise<void> {
+  const start = Date.now()
+  let seen = false
+  for (;;) {
+    let active = false
+    try {
+      const data = await plexFetch(baseUrl, token, '/activities') as {
+        MediaContainer?: { Activity?: Array<{ type?: string; title?: string; subtitle?: string }> }
+      }
+      active = (data?.MediaContainer?.Activity ?? []).some(a =>
+        match.test(`${a.type ?? ''} ${a.title ?? ''} ${a.subtitle ?? ''}`))
+    } catch {
+      // /activities unavailable on this server - fall back to the grace window
+    }
+    const elapsed = Date.now() - start
+    if (active) seen = true
+    else if (seen) return            // it ran and has now cleared
+    else if (elapsed >= graceMs) return  // never surfaced - assume it finished quickly
+    if (elapsed >= maxMs) return         // safety cap
+    await new Promise(r => setTimeout(r, pollMs))
+  }
+}
+
 /** Talks to the connected Plex Media Server: lookups, poster upload/reset, and stats. */
 export const PlexService = {
   /**
@@ -601,7 +681,15 @@ export const PlexService = {
   async resetPoster(req: ResetReq): Promise<void> {
     if (!_conn) throw new Error('Not connected to Plex')
     const { baseUrl, token } = _conn
-    const { itemKey, hierarchical } = req
+    const { itemKey, hierarchical, deleteUploads } = req
+
+    // Free the uploaded image data first: Plex can only delete the *active* thumb/art,
+    // so this must happen before the original poster is re-selected below. Deletion
+    // also reverts Plex to a default, making the select-original step a clean fallback.
+    if (deleteUploads) {
+      await deleteUploadedImage(baseUrl, token, itemKey, 'poster')
+      await deleteUploadedImage(baseUrl, token, itemKey, 'art')
+    }
 
     const postersData = await plexFetch(baseUrl, token, `/library/metadata/${itemKey}/posters`) as {
       MediaContainer?: { Metadata?: Array<{ ratingKey?: string; thumb?: string; selected?: boolean; provider?: string }> }
@@ -643,7 +731,7 @@ export const PlexService = {
           MediaContainer?: { Metadata?: Array<{ ratingKey: string }> }
         }
         for (const child of childData?.MediaContainer?.Metadata ?? []) {
-          await PlexService.resetPoster({ itemKey: child.ratingKey, hierarchical: true })
+          await PlexService.resetPoster({ itemKey: child.ratingKey, hierarchical: true, deleteUploads })
         }
       } catch {
         // no children or server error - skip
@@ -651,6 +739,22 @@ export const PlexService = {
     }
 
     Logger.info('Plex', `Poster reset - key ${itemKey}`)
+  },
+
+  /**
+   * Triggers Plex's "Clean Bundles" maintenance task to reclaim disk space from
+   * deleted/unused poster and art bundles, then waits for it to actually finish
+   * (the task runs asynchronously server-side) so the UI reflects real completion
+   * rather than a guessed cooldown.
+   */
+  async cleanBundles(): Promise<void> {
+    if (!_conn) throw new Error('Not connected to Plex')
+    const { baseUrl, token } = _conn
+    // 200 = started, 202 = already running; both are ok and we then wait it out.
+    await plexFetch(baseUrl, token, '/butler/CleanOldBundles', { method: 'POST' })
+    Logger.info('Plex', 'Triggered Clean Bundles task')
+    await waitForActivity(baseUrl, token, /bundle/i)
+    Logger.info('Plex', 'Clean Bundles finished')
   },
 
   /**
